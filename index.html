@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Unknown Pleasures – Face</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #000; overflow: hidden; height: 100vh; cursor: none; }
+    body.show-ui { cursor: default; }
+    canvas { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; }
+    video { display: none; }
+    #status {
+      position: fixed; top: 10px; left: 50%; transform: translateX(-50%);
+      color: #444; font-family: monospace; font-size: 13px; z-index: 20;
+    }
+    #gear {
+      position: fixed; top: 10px; right: 10px; z-index: 21;
+      background: none; border: 1px solid #333; color: #666;
+      font: 14px monospace; padding: 2px 8px; cursor: pointer; border-radius: 3px;
+      opacity: 0.8; transition: opacity 0.2s;
+    }
+    #gear:hover { opacity: 1; }
+    #controls {
+      display: none;
+      position: fixed; top: 40px; right: 10px; bottom: 10px;
+      color: #999; font-family: monospace; font-size: 11px; z-index: 20;
+      background: rgba(0,0,0,0.85); padding: 12px; border-radius: 4px;
+      user-select: none; min-width: 230px; overflow-y: auto;
+    }
+    #controls label { display: block; margin: 3px 0; white-space: nowrap; }
+    #controls input[type=range] { width: 90px; vertical-align: middle; }
+    #controls .section { color: #666; margin: 8px 0 3px; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; }
+  </style>
+</head>
+<body>
+  <div id="status">Loading…</div>
+  <button id="gear">⚙</button>
+  <div id="controls">
+    <div class="section">Lines</div>
+    <label>Blur: <input type="range" id="blurSlider" min="0" max="30" value="15"> <span id="blurVal">15</span></label>
+    <label>Displace: <input type="range" id="dispSlider" min="20" max="300" value="86"> <span id="dispVal">86</span></label>
+    <label>Power: <input type="range" id="powSlider" min="30" max="200" value="149"> <span id="powVal">1.49</span></label>
+    <label>Thickness: <input type="range" id="thickSlider" min="5" max="80" value="16"> <span id="thickVal">1.6</span></label>
+
+    <div class="section">Face depth</div>
+    <label>Eyes: <input type="range" id="eyeSlider" min="-50" max="30" value="8"> <span id="eyeVal">0.08</span></label>
+    <label>Mouth: <input type="range" id="mouthSlider" min="-30" max="60" value="52"> <span id="mouthVal">0.52</span></label>
+
+    <div class="section">Ghost features</div>
+    <label>Eye opacity: <input type="range" id="eyeOpSlider" min="0" max="100" value="25"> <span id="eyeOpVal">0.25</span></label>
+    <label>Mouth opacity: <input type="range" id="mouthOpSlider" min="0" max="100" value="20"> <span id="mouthOpVal">0.20</span></label>
+
+    <div class="section">Vertical lines</div>
+    <label>Eye verticals: <input type="range" id="eyeVertSlider" min="0" max="100" value="30"> <span id="eyeVertVal">0.30</span></label>
+    <label>Mouth verticals: <input type="range" id="mouthVertSlider" min="0" max="100" value="25"> <span id="mouthVertVal">0.25</span></label>
+    <label>Vert. density: <input type="range" id="vertDensSlider" min="2" max="30" value="8"> <span id="vertDensVal">8</span></label>
+
+    <div class="section">Style</div>
+    <label>Colour: <input type="color" id="colourPicker" value="#ffffff" style="width:40px;height:20px;vertical-align:middle;border:none;background:none;cursor:pointer;"> <span id="colourVal">#ffffff</span></label>
+    <label>Glow: <input type="range" id="glowSlider" min="0" max="100" value="0"> <span id="glowVal">off</span></label>
+    <label>Glow spread: <input type="range" id="glowSpreadSlider" min="1" max="80" value="10"> <span id="glowSpreadVal">10</span></label>
+
+    <div class="section">Point cloud</div>
+    <label>All points: <input type="range" id="pcAllSlider" min="0" max="100" value="0"> <span id="pcAllVal">off</span></label>
+    <label>Eyes: <input type="range" id="pcEyeSlider" min="0" max="100" value="0"> <span id="pcEyeVal">off</span></label>
+    <label>Mouth: <input type="range" id="pcMouthSlider" min="0" max="100" value="0"> <span id="pcMouthVal">off</span></label>
+    <label>Outline: <input type="range" id="pcOutlineSlider" min="0" max="100" value="0"> <span id="pcOutlineVal">off</span></label>
+    <label>Dot size: <input type="range" id="pcSizeSlider" min="5" max="60" value="15"> <span id="pcSizeVal">1.5</span></label>
+  </div>
+  <video id="webcam" autoplay playsinline></video>
+  <canvas id="canvas"></canvas>
+
+  <script>
+    document.getElementById('gear').onclick = () => {
+      const c = document.getElementById('controls');
+      const visible = c.style.display !== 'none';
+      c.style.display = visible ? 'none' : 'block';
+      document.body.classList.toggle('show-ui', !visible);
+    };
+  </script>
+  <script type="module" src="main.js"></script>
+</body>
+</html>
