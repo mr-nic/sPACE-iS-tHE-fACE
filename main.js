@@ -24,7 +24,7 @@ const SLIDER_IDS = [
   "stretchOpSlider","stretchAmtSlider","stretchPosSlider",
   "stretchDensSlider","stretchContSlider","stretchHueSlider","stretchScaleSlider","stretchExplodeSlider",
   "audioMixSlider","audioGainSlider","audioScrollSlider",
-  "globalZoomSlider","safeAreaSlider","trailSlider","colourCycleSlider",
+  "globalZoomSlider","safeAreaSlider","trailSlider","colourCycleSlider","chaosSlider",
   "morphTimeSlider"
 ];
 
@@ -37,11 +37,11 @@ const SECTIONS = {
   pc:         { sliders:["pcAllSlider","pcEyeSlider","pcMouthSlider","pcOutlineSlider","pcSizeSlider"] },
   style:      { sliders:["glowSlider","glowSpreadSlider"], colour:true },
   transforms: { sliders:["ghostScaleSlider","vertScaleSlider","pcScaleSlider","ghostRotSlider","vertRotSlider","pcRotSlider"], trackballs:["ghost","vert","pc"] },
-  cam:        { sliders:["camMixSlider","camPixelSlider","camLumaSlider","camContrastSlider","camBlurSlider","camScaleSlider"], trackballs:["cam"], selects:["camFxMode"], checkboxes:["camDispLock"] },
+  cam:        { sliders:["camMixSlider","camPixelSlider","camLumaSlider","camContrastSlider","camBlurSlider","camScaleSlider"], trackballs:["cam"], selects:["camFxMode"], checkboxes:["camDispLock","camLumaInvert"] },
   stretch:    { sliders:["stretchOpSlider","stretchAmtSlider","stretchPosSlider","stretchDensSlider","stretchContSlider","stretchHueSlider","stretchScaleSlider","stretchExplodeSlider"], trackballs:["stretch"], selects:["stretchBlend"] },
   audio:      { sliders:["audioMixSlider","audioGainSlider","audioScrollSlider"], checkboxes:["audioFaceLock"], selects:["audioMode"] },
   global:     { sliders:["globalZoomSlider","safeAreaSlider"], checkboxes:["safeFlipCheck","zoomAllCheck"] },
-  fx:         { sliders:["trailSlider","colourCycleSlider"], checkboxes:["trailSafeClip"] }
+  fx:         { sliders:["trailSlider","colourCycleSlider","chaosSlider"], checkboxes:["trailSafeClip"] }
 };
 
 // ─── Slider wiring ─────────────────────────────────────────────────
@@ -85,6 +85,7 @@ const fmts = {
   safeAreaSlider: s=>s.value==0?"off":s.value+"%",
   trailSlider: s=>s.value==0?"off":(s.value/100).toFixed(2),
   colourCycleSlider: s=>s.value==0?"off":s.value,
+  chaosSlider: s=>s.value==0?"off":s.value+"%",
   morphTimeSlider: s=>s.value==0?"snap":(s.value/10).toFixed(1)+"s"
 };
 
@@ -550,6 +551,119 @@ window.toggleMic=function(){
   if(micStream)stopMic(); else startMic().catch(e=>console.error("Mic error:",e));
 };
 
+// ─── Audio file playback ──────────────────────────────────────────
+let audioTrackSource=null, audioTrackBuffer=null, audioTrackStartTime=0, audioTrackPaused=0;
+let audioTrackPlaying=false, audioTrackAnalyser=null;
+let audioTrackDuration=0;
+
+sl("audioFileInput").onchange=async e=>{
+  const f=e.target.files[0];if(!f)return;
+  if(!audioCtx) audioCtx=new (window.AudioContext||window.webkitAudioContext)();
+  if(audioCtx.state==="suspended") await audioCtx.resume();
+  const arrayBuf=await f.arrayBuffer();
+  audioTrackBuffer=await audioCtx.decodeAudioData(arrayBuf);
+  audioTrackDuration=audioTrackBuffer.duration;
+  audioTrackPaused=0;
+  const nameEl=sl("audioTrackName");
+  if(nameEl)nameEl.textContent=f.name;
+  const timeEl=sl("audioTrackTime");
+  if(timeEl)timeEl.textContent=`0:00 / ${fmtTime(audioTrackDuration)}`;
+  const seekEl=sl("audioTrackSeek");
+  if(seekEl)seekEl.value=0;
+  e.target.value='';
+};
+
+function fmtTime(s){
+  const m=Math.floor(s/60),sec=Math.floor(s%60);
+  return m+":"+String(sec).padStart(2,'0');
+}
+
+function playAudioTrack(fromTime){
+  if(!audioTrackBuffer||!audioCtx)return;
+  if(audioCtx.state==="suspended") audioCtx.resume();
+  // Stop existing source
+  if(audioTrackSource){try{audioTrackSource.stop();}catch(e){}}
+  audioTrackSource=audioCtx.createBufferSource();
+  audioTrackSource.buffer=audioTrackBuffer;
+
+  // Route to analyser if checkbox checked
+  const routeToAnalyser=sl("audioTrackToAnalyser")&&sl("audioTrackToAnalyser").checked;
+  if(routeToAnalyser){
+    if(!audioTrackAnalyser){
+      audioTrackAnalyser=audioCtx.createAnalyser();
+      audioTrackAnalyser.fftSize=2048;
+      audioTrackAnalyser.smoothingTimeConstant=0.3;
+    }
+    audioTrackSource.connect(audioTrackAnalyser);
+    audioTrackAnalyser.connect(audioCtx.destination);
+    // Swap analyser so audio reactive uses the track
+    analyser=audioTrackAnalyser;
+    if(!audioWaveform)audioWaveform=new Uint8Array(analyser.fftSize);
+    if(!audioFreqData)audioFreqData=new Uint8Array(analyser.frequencyBinCount);
+  }else{
+    audioTrackSource.connect(audioCtx.destination);
+  }
+
+  const offset=fromTime||0;
+  audioTrackSource.start(0,offset);
+  audioTrackStartTime=audioCtx.currentTime-offset;
+  audioTrackPlaying=true;
+  audioTrackSource.onended=()=>{
+    audioTrackPlaying=false;
+    const btn=sl("audioPlayBtn");if(btn)btn.textContent="▶";
+  };
+  const btn=sl("audioPlayBtn");if(btn)btn.textContent="❚❚";
+  logTimecodeEvent("audio_play",{offset:offset.toFixed(2)});
+}
+
+window.toggleAudioTrack=function(){
+  if(!audioTrackBuffer)return;
+  if(audioTrackPlaying){
+    // Pause
+    audioTrackPaused=audioCtx.currentTime-audioTrackStartTime;
+    if(audioTrackSource){try{audioTrackSource.stop();}catch(e){}}
+    audioTrackPlaying=false;
+    const btn=sl("audioPlayBtn");if(btn)btn.textContent="▶";
+    logTimecodeEvent("audio_pause",{at:audioTrackPaused.toFixed(2)});
+  }else{
+    playAudioTrack(audioTrackPaused);
+  }
+};
+
+window.stopAudioTrack=function(){
+  if(audioTrackSource){try{audioTrackSource.stop();}catch(e){}}
+  audioTrackPlaying=false;
+  audioTrackPaused=0;
+  const btn=sl("audioPlayBtn");if(btn)btn.textContent="▶";
+  const seekEl=sl("audioTrackSeek");if(seekEl)seekEl.value=0;
+  const timeEl=sl("audioTrackTime");
+  if(timeEl&&audioTrackDuration)timeEl.textContent=`0:00 / ${fmtTime(audioTrackDuration)}`;
+  logTimecodeEvent("audio_stop");
+};
+
+// Seek bar
+sl("audioTrackSeek").oninput=function(){
+  if(!audioTrackBuffer)return;
+  const pos=(+this.value/1000)*audioTrackDuration;
+  const timeEl=sl("audioTrackTime");
+  if(timeEl)timeEl.textContent=`${fmtTime(pos)} / ${fmtTime(audioTrackDuration)}`;
+  if(audioTrackPlaying){
+    playAudioTrack(pos);
+  }else{
+    audioTrackPaused=pos;
+  }
+};
+
+// Update seek bar and time display during playback
+function updateAudioTrackUI(){
+  if(!audioTrackPlaying||!audioTrackBuffer)return;
+  const currentPos=audioCtx.currentTime-audioTrackStartTime;
+  const seekEl=sl("audioTrackSeek");
+  if(seekEl)seekEl.value=Math.round((currentPos/audioTrackDuration)*1000);
+  const timeEl=sl("audioTrackTime");
+  if(timeEl)timeEl.textContent=`${fmtTime(currentPos)} / ${fmtTime(audioTrackDuration)}`;
+}
+
 let audioLine=new Float32Array(LINE_SAMPLES);
 
 function updateAudioWaveform(){
@@ -994,6 +1108,7 @@ function drawWebcamOverlay(){
   const W=canvas.width, H=canvas.height;
   const pixelSize=+sl("camPixelSlider").value;
   const lumaKey=sl("camLumaSlider").value/100;
+  const lumaInvert=sl("camLumaInvert")&&sl("camLumaInvert").checked;
   const contrast=sl("camContrastSlider").value/100;
   const scale=sl("camScaleSlider").value/100;
   const mode=sl("camFxMode")?sl("camFxMode").value:"normal";
@@ -1072,7 +1187,12 @@ function drawWebcamOverlay(){
     }
 
     if(lumaKey>0){
-      const alpha=luma<lumaKey?0:Math.min(255,Math.round(((luma-lumaKey)/(1-lumaKey+0.001))*255));
+      let alpha;
+      if(lumaInvert){
+        alpha=luma>lumaKey?0:Math.min(255,Math.round(((lumaKey-luma)/(lumaKey+0.001))*255));
+      }else{
+        alpha=luma<lumaKey?0:Math.min(255,Math.round(((luma-lumaKey)/(1-lumaKey+0.001))*255));
+      }
       d[i+3]=alpha;
     }
     d[i]=r;d[i+1]=g;d[i+2]=b;
@@ -1123,18 +1243,127 @@ function updateFxState(){
   if(cycleSpeed>0){
     colourCycleHue=(colourCycleHue+cycleSpeed*0.5)%360;
   }
+  // Chaos engine
+  applyChaos();
+}
+
+// ─── Chaos engine ─────────────────────────────────────────────────
+// Progressive parameter destruction layered on top of current state
+let chaosBaseState=null;
+let chaosFrameCount=0;
+
+// Sliders that chaos can jitter (visual params only, not meta controls)
+const CHAOS_SLIDERS=["blurSlider","dispSlider","powSlider","thickSlider",
+  "eyeOpSlider","mouthOpSlider","ghostSubSlider","ghostPullSlider",
+  "eyeVertSlider","mouthVertSlider","vertDensSlider",
+  "pcAllSlider","pcEyeSlider","pcMouthSlider","pcOutlineSlider","pcSizeSlider",
+  "glowSlider","glowSpreadSlider",
+  "ghostScaleSlider","vertScaleSlider","pcScaleSlider",
+  "ghostRotSlider","vertRotSlider","pcRotSlider",
+  "camPixelSlider","stretchOpSlider","stretchAmtSlider","stretchExplodeSlider"];
+
+let chaosLastLoggedLevel=-1;
+
+function applyChaos(){
+  const chaosAmt=sl("chaosSlider")?+sl("chaosSlider").value/100:0;
+  if(chaosAmt<=0){chaosBaseState=null;chaosLastLoggedLevel=-1;return;}
+  chaosFrameCount++;
+
+  // Log chaos level changes (quantised to 10% steps)
+  const chaosLevel=Math.round(chaosAmt*10);
+  if(chaosLevel!==chaosLastLoggedLevel){
+    chaosLastLoggedLevel=chaosLevel;
+    logTimecodeEvent("chaos_level",{chaos:chaosLevel*10});
+  }
+
+  // Capture base state on first chaos frame
+  if(!chaosBaseState){
+    chaosBaseState={};
+    CHAOS_SLIDERS.forEach(id=>{const s=sl(id);if(s)chaosBaseState[id]=+s.value;});
+  }
+
+  // Level 1 (0–0.3): subtle jitter on visual sliders
+  if(chaosAmt>0){
+    const jitterAmt=chaosAmt*0.3;
+    CHAOS_SLIDERS.forEach(id=>{
+      const s=sl(id);
+      if(!s||chaosBaseState[id]===undefined)return;
+      const range=+s.max - +s.min;
+      const jitter=(Math.random()-0.5)*range*jitterAmt;
+      const newVal=Math.max(+s.min,Math.min(+s.max,chaosBaseState[id]+jitter));
+      s.value=Math.round(newVal);
+      if(s.oninput)s.oninput();
+    });
+  }
+
+  // Level 2 (0.3–0.6): random colour shifts, boost displacement/glow
+  if(chaosAmt>0.3){
+    const intensity=(chaosAmt-0.3)/0.3; // 0–1 within this band
+    if(Math.random()<intensity*0.3){
+      const h=Math.floor(Math.random()*360),s2=100,l2=50+Math.random()*20;
+      const c=(1-Math.abs(2*l2/100-1))*s2/100,x=c*(1-Math.abs((h/60)%2-1)),m=l2/100-c/2;
+      let r1=0,g1=0,b1=0;
+      if(h<60){r1=c;g1=x;}else if(h<120){r1=x;g1=c;}else if(h<180){g1=c;b1=x;}
+      else if(h<240){g1=x;b1=c;}else if(h<300){r1=x;b1=c;}else{r1=c;b1=x;}
+      const toHex=v=>Math.round((v+m)*255).toString(16).padStart(2,'0');
+      colourPicker.value="#"+toHex(r1)+toHex(g1)+toHex(b1);
+    }
+    // Push displacement up
+    const dispS=sl("dispSlider");
+    if(dispS)dispS.value=Math.min(+dispS.max,Math.round((chaosBaseState.dispSlider||86)+intensity*150));
+    // Push glow up
+    const glowS=sl("glowSlider");
+    if(glowS)glowS.value=Math.min(+glowS.max,Math.round(intensity*80));
+  }
+
+  // Level 3 (0.6–1.0): random pulses, strobes, explodes, trackball drift
+  if(chaosAmt>0.6){
+    const intensity=(chaosAmt-0.6)/0.4; // 0–1 within this band
+    // Random pulses
+    if(Math.random()<intensity*0.15)fxPulse=Math.random();
+    // Random strobes
+    if(Math.random()<intensity*0.05)fxStrobe=!fxStrobe;
+    // Random explode/implode
+    if(Math.random()<intensity*0.08)fxExplode=Math.random()*intensity;
+    if(Math.random()<intensity*0.06)fxImplode=Math.random()*intensity*0.5;
+    // Trackball drift
+    Object.keys(trackballState).forEach(k=>{
+      if(Math.random()<intensity*0.1){
+        trackballState[k].x=Math.max(-1,Math.min(1,trackballState[k].x+(Math.random()-0.5)*intensity*0.4));
+        trackballState[k].y=Math.max(-1,Math.min(1,trackballState[k].y+(Math.random()-0.5)*intensity*0.4));
+        const d=sl("dot"+k.charAt(0).toUpperCase()+k.slice(1));
+        if(d){d.style.left=((trackballState[k].x+1)/2*100)+"%";d.style.top=((trackballState[k].y+1)/2*100)+"%";}
+      }
+    });
+  }
+
+  // At max chaos (>0.9): full parameter blitz every few frames
+  if(chaosAmt>0.9&&chaosFrameCount%3===0){
+    CHAOS_SLIDERS.forEach(id=>{
+      const s=sl(id);if(!s)return;
+      s.value=Math.round(+s.min+Math.random()*(+s.max - +s.min));
+      if(s.oninput)s.oninput();
+    });
+    fxExplode=Math.random();
+    fxPulse=1;
+  }
+
+  // Restore base state reference when chaos is turned off (handled by chaosAmt<=0 check above)
 }
 
 // Keyboard handler
 document.addEventListener("keydown",e=>{
   // Don't trigger if typing in an input
   if(e.target.tagName==="INPUT"||e.target.tagName==="SELECT"||e.target.tagName==="TEXTAREA")return;
+  // Undo: Ctrl+Z or Cmd+Z
+  if((e.ctrlKey||e.metaKey)&&e.code==="KeyZ"){e.preventDefault();undo();return;}
   switch(e.code){
-    case "Space": fxPulse=1; e.preventDefault(); break;
-    case "KeyI": fxInvert=!fxInvert; break;
-    case "KeyF": fxStrobe=!fxStrobe; fxStrobeFrame=0; break;
-    case "KeyE": fxExplode=1; break;
-    case "KeyR": fxImplode=1; break;
+    case "Space": fxPulse=1; e.preventDefault(); logTimecodeEvent("fx",{key:"pulse"}); break;
+    case "KeyI": fxInvert=!fxInvert; logTimecodeEvent("fx",{key:"invert",state:fxInvert}); break;
+    case "KeyF": fxStrobe=!fxStrobe; fxStrobeFrame=0; logTimecodeEvent("fx",{key:"strobe",state:fxStrobe}); break;
+    case "KeyE": fxExplode=1; logTimecodeEvent("fx",{key:"explode"}); break;
+    case "KeyR": fxImplode=1; logTimecodeEvent("fx",{key:"implode"}); break;
+    case "KeyN": nextTimelineCue(); break;
   }
 });
 
@@ -1282,6 +1511,65 @@ function render(lm,grid){
 let mediaRecorder=null,recordedChunks=[];
 const recBtn=sl("recBtn");
 
+// ─── Sidecar timecode logging ─────────────────────────────────────
+let timecodeLog=[];
+let recordingStartTime=0;
+let isRecording=false;
+
+function logTimecodeEvent(type,data){
+  if(!isRecording)return;
+  const elapsed=performance.now()-recordingStartTime;
+  timecodeLog.push({time:elapsed,type,...(data||{})});
+}
+
+function exportTimecodesSRT(){
+  if(timecodeLog.length===0)return;
+  let srt='';
+  timecodeLog.forEach((ev,i)=>{
+    const startMs=ev.time;
+    const endMs=i<timecodeLog.length-1?timecodeLog[i+1].time:startMs+2000;
+    srt+=(i+1)+'\n';
+    srt+=msToSRT(startMs)+' --> '+msToSRT(endMs)+'\n';
+    let label=ev.type;
+    if(ev.cue!==undefined)label+=' #'+(ev.cue+1);
+    if(ev.label)label+=' ('+ev.label+')';
+    if(ev.key)label+=' ['+ev.key+']';
+    if(ev.chaos!==undefined)label+=' chaos:'+ev.chaos;
+    if(ev.offset!==undefined)label+=' @'+ev.offset+'s';
+    if(ev.at!==undefined)label+=' @'+ev.at+'s';
+    if(ev.bpm!==undefined)label+=' '+ev.bpm+'bpm';
+    srt+=label+'\n\n';
+  });
+  const blob=new Blob([srt],{type:'text/plain'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='space-is-the-face-timecodes.srt';a.click();
+}
+
+function exportTimecodesCSV(){
+  if(timecodeLog.length===0)return;
+  let csv='timecode,seconds,type,detail\n';
+  timecodeLog.forEach(ev=>{
+    const sec=(ev.time/1000).toFixed(3);
+    const tc=msToSRT(ev.time);
+    let detail='';
+    if(ev.cue!==undefined)detail+='cue:'+(ev.cue+1);
+    if(ev.label)detail+=' '+ev.label;
+    if(ev.key)detail+='key:'+ev.key;
+    if(ev.chaos!==undefined)detail+='chaos:'+ev.chaos;
+    if(ev.bpm!==undefined)detail+='bpm:'+ev.bpm;
+    csv+=`${tc},${sec},${ev.type},"${detail.trim()}"\n`;
+  });
+  const blob=new Blob([csv],{type:'text/csv'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='space-is-the-face-timecodes.csv';a.click();
+}
+
+function msToSRT(ms){
+  const h=Math.floor(ms/3600000);
+  const m=Math.floor((ms%3600000)/60000);
+  const s=Math.floor((ms%60000)/1000);
+  const f=Math.floor(ms%1000);
+  return String(h).padStart(2,'0')+':'+String(m).padStart(2,'0')+':'+String(s).padStart(2,'0')+','+String(f).padStart(3,'0');
+}
+
 function pickRecordingFormat(){
   const options=[
     {mimeType:"video/mp4;codecs=avc1.42E01E",ext:"mp4",type:"video/mp4"},
@@ -1297,16 +1585,27 @@ function pickRecordingFormat(){
 recBtn.onclick=()=>{
   if(mediaRecorder&&mediaRecorder.state==="recording"){
     mediaRecorder.stop();recBtn.textContent="● REC";recBtn.classList.remove("recording");
+    isRecording=false;
   }else{
     recordedChunks=[];
+    timecodeLog=[];
+    recordingStartTime=performance.now();
+    isRecording=true;
+    logTimecodeEvent("recording_start");
     const fmt=pickRecordingFormat();
     const stream=canvas.captureStream(60);
     mediaRecorder=new MediaRecorder(stream,{mimeType:fmt.mimeType,videoBitsPerSecond:20_000_000});
     mediaRecorder.ondataavailable=e=>{if(e.data.size>0)recordedChunks.push(e.data);};
     mediaRecorder.onstop=()=>{
+      logTimecodeEvent("recording_stop");
       const blob=new Blob(recordedChunks,{type:fmt.type});
       const url=URL.createObjectURL(blob);
       const a=document.createElement("a");a.href=url;a.download="space-is-the-face."+fmt.ext;a.click();URL.revokeObjectURL(url);
+      // Auto-export timecodes
+      if(timecodeLog.length>1){
+        setTimeout(()=>exportTimecodesSRT(),500);
+        setTimeout(()=>exportTimecodesCSV(),1000);
+      }
     };
     mediaRecorder.start();recBtn.textContent="■ STOP";recBtn.classList.add("recording");
     console.log("Recording:",fmt.mimeType,"@ 20Mbps");
@@ -1320,6 +1619,7 @@ function getState(){
   state.camFxMode=sl("camFxMode")?sl("camFxMode").value:"normal";
   state.stretchBlend=sl("stretchBlend")?sl("stretchBlend").value:"normal";
   state.camDispLock=sl("camDispLock")?sl("camDispLock").checked:false;
+  state.camLumaInvert=sl("camLumaInvert")?sl("camLumaInvert").checked:false;
   state.audioFaceLock=sl("audioFaceLock")?sl("audioFaceLock").checked:true;
   state.audioMode=sl("audioMode")?sl("audioMode").value:"waveform";
   state.safeFlipCheck=sl("safeFlipCheck")?sl("safeFlipCheck").checked:false;
@@ -1335,6 +1635,7 @@ function setState(state){
   if(state.camFxMode){const fx=sl("camFxMode");if(fx)fx.value=state.camFxMode;}
   if(state.stretchBlend){const sb=sl("stretchBlend");if(sb)sb.value=state.stretchBlend;}
   if(state.camDispLock!==undefined){const c=sl("camDispLock");if(c)c.checked=state.camDispLock;}
+  if(state.camLumaInvert!==undefined){const c=sl("camLumaInvert");if(c)c.checked=state.camLumaInvert;}
   if(state.audioFaceLock!==undefined){const c=sl("audioFaceLock");if(c)c.checked=state.audioFaceLock;}
   if(state.audioMode){const m=sl("audioMode");if(m)m.value=state.audioMode;}
   if(state.safeFlipCheck!==undefined){const c=sl("safeFlipCheck");if(c)c.checked=state.safeFlipCheck;}
@@ -1347,6 +1648,308 @@ window.loadPreset=n=>{const d=localStorage.getItem("sitf_preset_"+n);if(d)setSta
 window.exportPreset=()=>{const blob=new Blob([JSON.stringify(getState(),null,2)],{type:"application/json"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="sitf-preset.json";a.click();};
 sl("importFile").onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{setState(JSON.parse(r.result));}catch(err){console.error(err);}};r.readAsText(f);};
 
+// ─── Undo system ──────────────────────────────────────────────────
+const undoStack=[];
+const UNDO_MAX=50;
+let undoThrottleTimer=null;
+let undoIsRestoring=false;
+
+function pushUndo(){
+  if(undoIsRestoring)return;
+  // Throttle: only capture once per 300ms of continuous changes
+  if(undoThrottleTimer)clearTimeout(undoThrottleTimer);
+  undoThrottleTimer=setTimeout(()=>{
+    const snap=getState();
+    // Skip if identical to last snapshot
+    if(undoStack.length>0&&JSON.stringify(snap)===JSON.stringify(undoStack[undoStack.length-1]))return;
+    undoStack.push(snap);
+    if(undoStack.length>UNDO_MAX)undoStack.shift();
+  },300);
+}
+
+function undo(){
+  if(undoStack.length===0)return;
+  undoIsRestoring=true;
+  const prev=undoStack.pop();
+  setState(prev);
+  undoIsRestoring=false;
+}
+
+// Hook into slider changes for undo
+SLIDER_IDS.forEach(id=>{
+  const s=sl(id);
+  if(!s)return;
+  const origOninput=s.oninput;
+  s.oninput=()=>{pushUndo();if(origOninput)origOninput();};
+});
+// Hook colour picker
+const origColourOninput=colourPicker.oninput;
+colourPicker.oninput=()=>{pushUndo();if(origColourOninput)origColourOninput();};
+
+// Capture initial state
+undoStack.push(getState());
+
+// ─── BPM sync engine ──────────────────────────────────────────────
+let bpmValue=120;
+let bpmBeatTime=0; // ms timestamp of last beat
+let bpmBeatCount=0;
+let bpmInterval=null;
+let bpmDivision=1;
+
+// Tap tempo
+const tapTimes=[];
+const tapBtn=sl("tapTempoBtn");
+const bpmInput=sl("bpmInput");
+const beatDisplay=sl("beatDisplay");
+
+if(tapBtn)tapBtn.onclick=()=>{
+  const now=performance.now();
+  tapTimes.push(now);
+  // Keep last 8 taps
+  if(tapTimes.length>8)tapTimes.shift();
+  if(tapTimes.length>=2){
+    let sum=0;
+    for(let i=1;i<tapTimes.length;i++)sum+=(tapTimes[i]-tapTimes[i-1]);
+    const avgMs=sum/(tapTimes.length-1);
+    bpmValue=Math.round(60000/avgMs);
+    bpmValue=Math.max(20,Math.min(300,bpmValue));
+    if(bpmInput)bpmInput.value=bpmValue;
+    restartBpmTimer();
+  }
+  // Clear taps after 3s gap
+  setTimeout(()=>{if(performance.now()-tapTimes[tapTimes.length-1]>3000)tapTimes.length=0;},3500);
+};
+
+if(bpmInput)bpmInput.onchange=()=>{
+  bpmValue=Math.max(20,Math.min(300,+bpmInput.value));
+  bpmInput.value=bpmValue;
+  restartBpmTimer();
+};
+
+const bpmDivSelect=sl("bpmDivision");
+if(bpmDivSelect)bpmDivSelect.onchange=()=>{bpmDivision=+bpmDivSelect.value;restartBpmTimer();};
+
+function restartBpmTimer(){
+  if(bpmInterval)clearInterval(bpmInterval);
+  const msPerBeat=(60000/bpmValue)*bpmDivision;
+  bpmBeatCount=0;
+  bpmInterval=setInterval(()=>{
+    bpmBeatTime=performance.now();
+    bpmBeatCount=(bpmBeatCount%4)+1;
+    // Update beat display
+    if(beatDisplay){
+      const dots=['·','·','·','·'];
+      dots[bpmBeatCount-1]='●';
+      beatDisplay.textContent=dots.join(' ');
+      beatDisplay.style.color='#fff';
+      setTimeout(()=>{if(beatDisplay)beatDisplay.style.color='#555';},80);
+    }
+    // Auto-pulse
+    if(sl("bpmPulse")&&sl("bpmPulse").checked)fxPulse=1;
+    // Auto-strobe (toggle on downbeat)
+    if(sl("bpmStrobe")&&sl("bpmStrobe").checked&&bpmBeatCount===1)fxStrobe=!fxStrobe;
+  },msPerBeat);
+}
+restartBpmTimer();
+
+// ─── BPM auto-detect from mic ─────────────────────────────────────
+let bpmDetectBuf=[];
+let bpmDetectLastEnergy=0;
+let bpmDetectOnsets=[];
+let bpmDetectLastTime=0;
+
+function detectBPM(){
+  if(!sl("bpmDetect")||!sl("bpmDetect").checked)return;
+  if(!analyser||!audioFreqData)return;
+  const now=performance.now();
+  if(now-bpmDetectLastTime<30)return; // run ~33fps
+  bpmDetectLastTime=now;
+
+  analyser.getByteFrequencyData(audioFreqData);
+  // Low-frequency energy (kick detection) — first 10 bins
+  let energy=0;
+  for(let i=0;i<10;i++)energy+=audioFreqData[i];
+  energy/=10;
+
+  // Onset detection: energy spike above threshold
+  const threshold=bpmDetectLastEnergy*1.4+10;
+  if(energy>threshold&&energy>40){
+    // Debounce: minimum 200ms between onsets (~300bpm max)
+    if(bpmDetectOnsets.length===0||now-bpmDetectOnsets[bpmDetectOnsets.length-1]>200){
+      bpmDetectOnsets.push(now);
+      if(bpmDetectOnsets.length>16)bpmDetectOnsets.shift();
+    }
+  }
+  bpmDetectLastEnergy=bpmDetectLastEnergy*0.85+energy*0.15;
+
+  // Calculate BPM from onsets
+  if(bpmDetectOnsets.length>=4){
+    // Remove stale onsets (older than 8 seconds)
+    while(bpmDetectOnsets.length>0&&now-bpmDetectOnsets[0]>8000)bpmDetectOnsets.shift();
+    if(bpmDetectOnsets.length>=4){
+      let sum=0;
+      for(let i=1;i<bpmDetectOnsets.length;i++)sum+=(bpmDetectOnsets[i]-bpmDetectOnsets[i-1]);
+      const avgMs=sum/(bpmDetectOnsets.length-1);
+      let detected=Math.round(60000/avgMs);
+      // Clamp to reasonable range
+      if(detected>=20&&detected<=300){
+        // Smooth: blend towards detected value
+        bpmValue=Math.round(bpmValue*0.7+detected*0.3);
+        if(bpmInput)bpmInput.value=bpmValue;
+        restartBpmTimer();
+      }
+    }
+  }
+}
+
+// ─── Timeline / preset sequencer ──────────────────────────────────
+let timelineCues=[]; // [{state, transitionTime, label}]
+let timelineIndex=-1;
+let timelinePlaying=false;
+let timelineTimer=null;
+
+function renderTimelineCues(){
+  const container=sl("timelineCues");
+  if(!container)return;
+  if(timelineCues.length===0){container.innerHTML='<div style="color:#444;font-size:8px;">No cues. Add current state or import a timeline.</div>';return;}
+  container.innerHTML=timelineCues.map((c,i)=>{
+    const active=i===timelineIndex?'color:#0f0;':'color:#999;';
+    return `<div style="${active}font-size:9px;display:flex;align-items:center;gap:3px;margin:1px 0;">
+      <span style="min-width:14px;">${i+1}.</span>
+      <input type="text" value="${c.label||'Cue '+(i+1)}" onchange="renameTimelineCue(${i},this.value)" style="width:55px;background:#111;color:#aaa;border:1px solid #333;font:8px monospace;padding:1px 2px;border-radius:2px;">
+      <input type="number" value="${c.transitionTime}" onchange="setTimelineCueTime(${i},this.value)" min="0" max="60" step="0.5" style="width:36px;background:#111;color:#aaa;border:1px solid #333;font:8px monospace;padding:1px 2px;border-radius:2px;" title="Transition time (s)">
+      <span style="color:#555;font-size:7px;">s</span>
+      <button class="sec-btn" onclick="removeTimelineCue(${i})" style="color:#c55;">✕</button>
+      <button class="sec-btn" onclick="moveTimelineCue(${i},-1)">↑</button>
+      <button class="sec-btn" onclick="moveTimelineCue(${i},1)">↓</button>
+    </div>`;
+  }).join('');
+}
+
+window.addTimelineCue=function(){
+  const morphTime=getMorphTime();
+  timelineCues.push({state:getState(),transitionTime:morphTime>0?morphTime:3,label:'Cue '+(timelineCues.length+1)});
+  renderTimelineCues();
+  updateTimelineStatus();
+};
+window.renameTimelineCue=function(i,name){if(timelineCues[i])timelineCues[i].label=name;};
+window.setTimelineCueTime=function(i,t){if(timelineCues[i])timelineCues[i].transitionTime=Math.max(0,+t);};
+window.removeTimelineCue=function(i){timelineCues.splice(i,1);renderTimelineCues();updateTimelineStatus();};
+window.moveTimelineCue=function(i,dir){
+  const j=i+dir;
+  if(j<0||j>=timelineCues.length)return;
+  [timelineCues[i],timelineCues[j]]=[timelineCues[j],timelineCues[i]];
+  renderTimelineCues();
+};
+
+window.playTimeline=function(){
+  if(timelineCues.length===0)return;
+  timelinePlaying=true;
+  timelineIndex=0;
+  morphToCue(0);
+  updateTimelineStatus();
+};
+
+window.stopTimeline=function(){
+  timelinePlaying=false;
+  if(timelineTimer)clearTimeout(timelineTimer);
+  timelineTimer=null;
+  updateTimelineStatus();
+  renderTimelineCues();
+};
+
+window.nextTimelineCue=function(){
+  if(timelineCues.length===0)return;
+  timelineIndex=(timelineIndex+1)%timelineCues.length;
+  morphToCue(timelineIndex);
+  renderTimelineCues();
+  updateTimelineStatus();
+};
+
+function morphToCue(i){
+  const cue=timelineCues[i];
+  if(!cue)return;
+  timelineIndex=i;
+  renderTimelineCues();
+  logTimecodeEvent("cue_change",{cue:i,label:cue.label,transition:cue.transitionTime});
+  const dur=cue.transitionTime;
+  if(dur<=0){
+    setState(cue.state);
+  }else{
+    // Use morph system
+    morphStartState={};
+    SLIDER_IDS.forEach(id=>{const s=sl(id);if(s)morphStartState[id]=+s.value;});
+    morphStartState.colour=colourPicker.value;
+    morphStartState.trackballs={};
+    Object.keys(trackballState).forEach(k=>{
+      morphStartState.trackballs[k]={x:trackballState[k].x,y:trackballState[k].y};
+    });
+    morphTargets={...cue.state};
+    if(cue.state.trackballs)morphTargets.trackballs={...cue.state.trackballs};
+    morphDuration=dur*1000;
+    morphStart=performance.now();
+  }
+  // Schedule next cue if playing
+  if(timelinePlaying){
+    if(timelineTimer)clearTimeout(timelineTimer);
+    const nextI=(i+1)%timelineCues.length;
+    // Wait for transition + hold (transition time is the morph to THIS cue)
+    const waitMs=dur*1000+500; // 500ms hold after morph completes
+    timelineTimer=setTimeout(()=>{
+      if(!timelinePlaying)return;
+      if(nextI===0){
+        // Looped back to start — stop or loop
+        timelinePlaying=false;
+        updateTimelineStatus();
+        renderTimelineCues();
+      }else{
+        morphToCue(nextI);
+      }
+    },waitMs);
+  }
+}
+
+function updateTimelineStatus(){
+  const el=sl("timelineStatus");
+  if(!el)return;
+  if(timelinePlaying)el.textContent=`▶ Playing cue ${timelineIndex+1}/${timelineCues.length}`;
+  else if(timelineCues.length>0)el.textContent=`${timelineCues.length} cue${timelineCues.length>1?'s':''} loaded`;
+  else el.textContent='';
+}
+
+window.exportTimeline=function(){
+  if(timelineCues.length===0)return;
+  const data=timelineCues.map(c=>({state:c.state,transitionTime:c.transitionTime,label:c.label}));
+  const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});
+  const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="sitf-timeline.json";a.click();
+};
+
+sl("timelineImportFile").onchange=e=>{
+  const f=e.target.files[0];if(!f)return;
+  const r=new FileReader();
+  r.onload=()=>{
+    try{
+      const data=JSON.parse(r.result);
+      if(Array.isArray(data)){
+        // Check if it's a timeline (array of cues) or a single preset
+        if(data.length>0&&data[0].state){
+          // Timeline format
+          timelineCues=data.map((c,i)=>({state:c.state,transitionTime:c.transitionTime||3,label:c.label||'Cue '+(i+1)}));
+        }
+      }else if(typeof data==='object'&&data.colour){
+        // Single preset — add as a cue
+        timelineCues.push({state:data,transitionTime:3,label:'Imported'});
+      }
+      renderTimelineCues();
+      updateTimelineStatus();
+    }catch(err){console.error("Timeline import error:",err);}
+  };
+  r.readAsText(f);
+  e.target.value='';
+};
+
+renderTimelineCues();
+
 // ─── Render loop ───────────────────────────────────────────────────
 function renderLoop(){
   if(!faceLandmarker){requestAnimationFrame(renderLoop);return;}
@@ -1354,6 +1957,8 @@ function renderLoop(){
   lastTimestamp=now;
   tickMorph();
   updateAudioWaveform();
+  detectBPM();
+  updateAudioTrackUI();
   const result=faceLandmarker.detectForVideo(video,now);
   if(result.faceLandmarks&&result.faceLandmarks.length>0){
     currentLandmarks=result.faceLandmarks[0];

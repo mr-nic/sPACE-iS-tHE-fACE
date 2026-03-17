@@ -66,6 +66,9 @@
     <label><span class="rlabel" data-for="camPixelSlider">Pixels:</span> <input type="range" id="camPixelSlider" min="1" max="48" value="1" data-default="1"> <span id="camPixelVal">off</span></label>
     <label>Effect: <select id="camFxMode"><option value="normal">Normal</option><option value="mono">Mono</option><option value="pxl2000">PXL-2000</option><option value="1bit">1-Bit</option></select></label>
     <label><span class="rlabel" data-for="camLumaSlider">Luma key:</span> <input type="range" id="camLumaSlider" min="0" max="100" value="0" data-default="0"> <span id="camLumaVal">off</span></label>
+    <div class="toggle-row">
+      <input type="checkbox" id="camLumaInvert"> <label for="camLumaInvert" style="display:inline;margin:0;cursor:pointer;">Invert luma key</label>
+    </div>
     <label><span class="rlabel" data-for="camContrastSlider">Contrast:</span> <input type="range" id="camContrastSlider" min="20" max="200" value="100" data-default="100"> <span id="camContrastVal">1.00</span></label>
     <label><span class="rlabel" data-for="camBlurSlider">Cam blur:</span> <input type="range" id="camBlurSlider" min="0" max="20" value="0" data-default="0"> <span id="camBlurVal">off</span></label>
     <label><span class="rlabel" data-for="camScaleSlider">Scale:</span> <input type="range" id="camScaleSlider" min="20" max="300" value="100" data-default="100"> <span id="camScaleVal">1.00</span></label>
@@ -116,7 +119,57 @@
       <input type="checkbox" id="trailSafeClip"> <label for="trailSafeClip" style="display:inline;margin:0;cursor:pointer;">Trail outside safe area</label>
     </div>
     <label><span class="rlabel" data-for="colourCycleSlider">Colour cycle:</span> <input type="range" id="colourCycleSlider" min="0" max="100" value="0" data-default="0"> <span id="colourCycleVal">off</span></label>
-    <div style="color:#555;font-size:8px;margin:4px 0 2px;letter-spacing:0.5px;">KEYBOARD: <span style="color:#777;">Space</span>=pulse <span style="color:#777;">I</span>=invert <span style="color:#777;">F</span>=strobe <span style="color:#777;">E</span>=explode <span style="color:#777;">R</span>=implode</div>
+    <label><span class="rlabel" data-for="chaosSlider">Chaos:</span> <input type="range" id="chaosSlider" min="0" max="100" value="0" data-default="0"> <span id="chaosVal">off</span></label>
+    <div style="color:#555;font-size:8px;margin:4px 0 2px;letter-spacing:0.5px;">KEYBOARD: <span style="color:#777;">Space</span>=pulse <span style="color:#777;">I</span>=invert <span style="color:#777;">F</span>=strobe <span style="color:#777;">E</span>=explode <span style="color:#777;">R</span>=implode <span style="color:#777;">Z</span>=undo <span style="color:#777;">N</span>=next cue</div>
+
+    <div class="section"><span>Audio track</span></div>
+    <div class="preset-row">
+      <button class="panel-btn" id="audioFileBtn" onclick="document.getElementById('audioFileInput').click()">Load .wav/.mp3</button>
+      <button class="panel-btn" id="audioPlayBtn" onclick="toggleAudioTrack()">▶</button>
+      <button class="panel-btn" onclick="stopAudioTrack()">■</button>
+      <input type="file" id="audioFileInput" accept=".wav,.mp3,.ogg,.flac" style="display:none">
+    </div>
+    <div id="audioTrackName" style="color:#555;font-size:8px;margin:2px 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></div>
+    <div style="display:flex;align-items:center;gap:4px;margin:3px 0;">
+      <input type="range" id="audioTrackSeek" min="0" max="1000" value="0" style="width:140px;" title="Seek">
+      <span id="audioTrackTime" style="color:#666;font-size:8px;">0:00 / 0:00</span>
+    </div>
+    <div class="toggle-row">
+      <input type="checkbox" id="audioTrackToAnalyser" checked> <label for="audioTrackToAnalyser" style="display:inline;margin:0;cursor:pointer;">Route to audio reactive</label>
+    </div>
+
+    <div class="section"><span>BPM sync</span></div>
+    <div style="display:flex;align-items:center;gap:4px;margin:3px 0;">
+      <button class="panel-btn" id="tapTempoBtn" style="padding:2px 8px;">Tap</button>
+      <input type="number" id="bpmInput" min="20" max="300" value="120" style="width:48px;background:#111;color:#fff;border:1px solid #444;font:10px monospace;padding:1px 3px;border-radius:2px;text-align:center;">
+      <span style="color:#666;font-size:9px;">BPM</span>
+      <span id="beatDisplay" style="color:#333;font-size:12px;font-weight:bold;letter-spacing:2px;margin-left:4px;">· · · ·</span>
+    </div>
+    <div class="toggle-row">
+      <input type="checkbox" id="bpmDetect"> <label for="bpmDetect" style="display:inline;margin:0;cursor:pointer;">Auto-detect from mic</label>
+    </div>
+    <div class="toggle-row">
+      <input type="checkbox" id="bpmPulse"> <label for="bpmPulse" style="display:inline;margin:0;cursor:pointer;">Auto-pulse on beat</label>
+    </div>
+    <div class="toggle-row">
+      <input type="checkbox" id="bpmStrobe"> <label for="bpmStrobe" style="display:inline;margin:0;cursor:pointer;">Auto-strobe on beat</label>
+    </div>
+    <label style="margin:2px 0;">Division: <select id="bpmDivision"><option value="1">1 (whole)</option><option value="0.5">1/2</option><option value="0.25">1/4</option><option value="0.125">1/8</option></select></label>
+
+    <div class="section"><span>Timeline</span></div>
+    <div id="timelineCues" style="margin:3px 0;max-height:100px;overflow-y:auto;"></div>
+    <div class="preset-row">
+      <button class="panel-btn" onclick="addTimelineCue()">+ Add cue</button>
+      <button class="panel-btn" onclick="playTimeline()">▶ Play</button>
+      <button class="panel-btn" onclick="stopTimeline()">■ Stop</button>
+      <button class="panel-btn" onclick="nextTimelineCue()">▸ Next</button>
+    </div>
+    <div class="preset-row">
+      <button class="panel-btn" onclick="exportTimeline()">Export timeline</button>
+      <button class="panel-btn" onclick="document.getElementById('timelineImportFile').click()">Import timeline</button>
+      <input type="file" id="timelineImportFile" accept=".json" style="display:none">
+    </div>
+    <div id="timelineStatus" style="color:#555;font-size:8px;margin:2px 0;"></div>
 
     <div class="section"><span>Presets</span></div>
     <div class="preset-row">
