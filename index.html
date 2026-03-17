@@ -3,81 +3,214 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Unknown Pleasures – Face</title>
+  <title>sPACE iS tHE faCE</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { background: #000; overflow: hidden; height: 100vh; cursor: none; }
     body.show-ui { cursor: default; }
     canvas { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; }
     video { display: none; }
-    #status {
-      position: fixed; top: 10px; left: 50%; transform: translateX(-50%);
-      color: #444; font-family: monospace; font-size: 13px; z-index: 20;
-    }
-    #gear {
-      position: fixed; top: 10px; right: 10px; z-index: 21;
-      background: none; border: 1px solid #333; color: #666;
-      font: 14px monospace; padding: 2px 8px; cursor: pointer; border-radius: 3px;
-      opacity: 0.8; transition: opacity 0.2s;
-    }
+    #status { position: fixed; top: 10px; left: 50%; transform: translateX(-50%); color: #444; font-family: monospace; font-size: 13px; z-index: 20; }
+    #gear { position: fixed; top: 10px; right: 10px; z-index: 21; background: none; border: 1px solid #333; color: #666; font: 14px monospace; padding: 2px 8px; cursor: pointer; border-radius: 3px; opacity: 0.8; }
     #gear:hover { opacity: 1; }
-    #controls {
-      display: none;
-      position: fixed; top: 40px; right: 10px; bottom: 10px;
-      color: #999; font-family: monospace; font-size: 11px; z-index: 20;
-      background: rgba(0,0,0,0.85); padding: 12px; border-radius: 4px;
-      user-select: none; min-width: 230px; overflow-y: auto;
+    .panel {
+      display: none; position: fixed; top: 40px; bottom: 10px;
+      color: #999; font-family: monospace; font-size: 10px; z-index: 20;
+      background: rgba(0,0,0,0.9); padding: 10px; border-radius: 4px;
+      user-select: none; width: 250px; overflow-y: auto;
     }
-    #controls label { display: block; margin: 3px 0; white-space: nowrap; }
-    #controls input[type=range] { width: 90px; vertical-align: middle; }
-    #controls .section { color: #666; margin: 8px 0 3px; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; }
+    #camPanel { left: 10px; }
+    #controls { right: 10px; }
+    .panel label { display: block; margin: 2px 0; white-space: nowrap; }
+    .panel input[type=range] { width: 78px; vertical-align: middle; }
+    .panel select { background: #111; color: #999; border: 1px solid #444; font: 9px monospace; padding: 1px 3px; border-radius: 2px; vertical-align: middle; }
+    .panel .section { color: #555; margin: 7px 0 2px; font-size: 9px; text-transform: uppercase; letter-spacing: 1px; display: flex; justify-content: space-between; align-items: center; }
+    .sec-btns { display: flex; gap: 2px; }
+    .sec-btn { color: #555; cursor: pointer; font-size: 9px; background: none; border: 1px solid #333; padding: 0 3px; border-radius: 2px; line-height: 14px; }
+    .sec-btn:hover { color: #fff; border-color: #666; }
+    .sec-btn.locked { color: #f90; border-color: #f90; }
+    .rlabel { cursor: pointer; }
+    .rlabel:hover { color: #fff; }
+    .trackball { width: 58px; height: 58px; background: #111; border: 1px solid #333; border-radius: 4px; position: relative; cursor: crosshair; display: inline-block; margin: 2px; vertical-align: top; }
+    .trackball .dot { width: 8px; height: 8px; background: #fff; border-radius: 50%; position: absolute; transform: translate(-50%,-50%); pointer-events: none; }
+    .trackball .crosshair-h, .trackball .crosshair-v { position: absolute; background: #333; pointer-events: none; }
+    .trackball .crosshair-h { width: 100%; height: 1px; top: 50%; }
+    .trackball .crosshair-v { height: 100%; width: 1px; left: 50%; }
+    .tb-label { font-size: 8px; color: #666; text-align: center; display: block; }
+    .preset-row { display: flex; gap: 3px; margin: 3px 0; flex-wrap: wrap; }
+    .preset-row button, .panel-btn { background: #222; border: 1px solid #444; color: #aaa; font: 9px monospace; padding: 2px 5px; cursor: pointer; border-radius: 2px; }
+    .preset-row button:hover, .panel-btn:hover { background: #444; }
+    .reset-all { background: #300; border: 1px solid #600; color: #c88; font: 9px monospace; padding: 2px 6px; cursor: pointer; border-radius: 2px; }
+    .reset-all:hover { background: #600; color: #fff; }
+    .top-btns { display: flex; gap: 3px; margin-bottom: 6px; }
+    #recBtn { background: none; border: 1px solid #600; color: #c00; font: 12px monospace; padding: 4px 12px; cursor: pointer; border-radius: 3px; width: 100%; margin-bottom: 6px; }
+    #recBtn:hover { opacity: 1; }
+    #recBtn.recording { background: #600; color: #fff; animation: pulse 1s infinite; }
+    @keyframes pulse { 0%,100%{opacity:0.8;}50%{opacity:0.4;} }
+    .toggle-row { display: flex; align-items: center; gap: 6px; margin: 3px 0; }
+    .toggle-row input[type=checkbox] { accent-color: #c00; }
+    .tb-pair { display: flex; gap: 12px; align-items: flex-start; margin-top: 2px; }
+    .tb-pair .tb-sep { color: #333; font-size: 16px; align-self: center; margin: 0 -4px; }
   </style>
 </head>
 <body>
   <div id="status">Loading…</div>
   <button id="gear">⚙</button>
-  <div id="controls">
-    <div class="section">Lines</div>
-    <label>Blur: <input type="range" id="blurSlider" min="0" max="30" value="15"> <span id="blurVal">15</span></label>
-    <label>Displace: <input type="range" id="dispSlider" min="20" max="300" value="86"> <span id="dispVal">86</span></label>
-    <label>Power: <input type="range" id="powSlider" min="30" max="200" value="149"> <span id="powVal">1.49</span></label>
-    <label>Thickness: <input type="range" id="thickSlider" min="5" max="80" value="16"> <span id="thickVal">1.6</span></label>
 
-    <div class="section">Face depth</div>
-    <label>Eyes: <input type="range" id="eyeSlider" min="-50" max="30" value="8"> <span id="eyeVal">0.08</span></label>
-    <label>Mouth: <input type="range" id="mouthSlider" min="-30" max="60" value="52"> <span id="mouthVal">0.52</span></label>
+  <!-- ═══ LEFT PANEL — Camera & FX ═══ -->
+  <div id="camPanel" class="panel">
+    <button id="recBtn">● REC</button>
 
-    <div class="section">Ghost features</div>
-    <label>Eye opacity: <input type="range" id="eyeOpSlider" min="0" max="100" value="25"> <span id="eyeOpVal">0.25</span></label>
-    <label>Mouth opacity: <input type="range" id="mouthOpSlider" min="0" max="100" value="20"> <span id="mouthOpVal">0.20</span></label>
+    <div class="section"><span>Webcam feed</span><div class="sec-btns"><button class="sec-btn" onclick="toggleLock('cam',this)">🔓</button><button class="sec-btn" onclick="homeSection('cam')" title="Gentle return to centre">🏠</button><button class="sec-btn" onclick="resetSection('cam')">⟲</button><button class="sec-btn" onclick="randomSection('cam')">🎲</button></div></div>
+    <label><span class="rlabel" data-for="camMixSlider">Feed:</span> <input type="range" id="camMixSlider" min="0" max="100" value="0" data-default="0"> <span id="camMixVal">off</span></label>
+    <label><span class="rlabel" data-for="camPixelSlider">Pixels:</span> <input type="range" id="camPixelSlider" min="1" max="48" value="1" data-default="1"> <span id="camPixelVal">off</span></label>
+    <label>Effect: <select id="camFxMode"><option value="normal">Normal</option><option value="mono">Mono</option><option value="pxl2000">PXL-2000</option><option value="1bit">1-Bit</option></select></label>
+    <label><span class="rlabel" data-for="camLumaSlider">Luma key:</span> <input type="range" id="camLumaSlider" min="0" max="100" value="0" data-default="0"> <span id="camLumaVal">off</span></label>
+    <label><span class="rlabel" data-for="camContrastSlider">Contrast:</span> <input type="range" id="camContrastSlider" min="20" max="200" value="100" data-default="100"> <span id="camContrastVal">1.00</span></label>
+    <label><span class="rlabel" data-for="camBlurSlider">Cam blur:</span> <input type="range" id="camBlurSlider" min="0" max="20" value="0" data-default="0"> <span id="camBlurVal">off</span></label>
+    <label><span class="rlabel" data-for="camScaleSlider">Scale:</span> <input type="range" id="camScaleSlider" min="20" max="300" value="100" data-default="100"> <span id="camScaleVal">1.00</span></label>
+    <div class="toggle-row">
+      <input type="checkbox" id="camDispLock"> <label for="camDispLock" style="display:inline;margin:0;cursor:pointer;">Lock to line displacement</label>
+    </div>
 
-    <div class="section">Vertical lines</div>
-    <label>Eye verticals: <input type="range" id="eyeVertSlider" min="0" max="100" value="30"> <span id="eyeVertVal">0.30</span></label>
-    <label>Mouth verticals: <input type="range" id="mouthVertSlider" min="0" max="100" value="25"> <span id="mouthVertVal">0.25</span></label>
-    <label>Vert. density: <input type="range" id="vertDensSlider" min="2" max="30" value="8"> <span id="vertDensVal">8</span></label>
+    <div class="section"><span>Pixel stretch</span><div class="sec-btns"><button class="sec-btn" onclick="toggleLock('stretch',this)">🔓</button><button class="sec-btn" onclick="homeSection('stretch')" title="Gentle return to centre">🏠</button><button class="sec-btn" onclick="resetSection('stretch')">⟲</button><button class="sec-btn" onclick="randomSection('stretch')">🎲</button></div></div>
+    <label><span class="rlabel" data-for="stretchOpSlider">Opacity:</span> <input type="range" id="stretchOpSlider" min="0" max="100" value="0" data-default="0"> <span id="stretchOpVal">off</span></label>
+    <label><span class="rlabel" data-for="stretchAmtSlider">Amount:</span> <input type="range" id="stretchAmtSlider" min="0" max="100" value="0" data-default="0"> <span id="stretchAmtVal">off</span></label>
+    <label><span class="rlabel" data-for="stretchPosSlider">Position:</span> <input type="range" id="stretchPosSlider" min="0" max="100" value="50" data-default="50"> <span id="stretchPosVal">0.50</span></label>
+    <label><span class="rlabel" data-for="stretchDensSlider">Density:</span> <input type="range" id="stretchDensSlider" min="1" max="24" value="1" data-default="1"> <span id="stretchDensVal">1</span></label>
+    <label><span class="rlabel" data-for="stretchContSlider">Contrast:</span> <input type="range" id="stretchContSlider" min="20" max="300" value="100" data-default="100"> <span id="stretchContVal">1.00</span></label>
+    <label><span class="rlabel" data-for="stretchHueSlider">Colour cycle:</span> <input type="range" id="stretchHueSlider" min="0" max="100" value="0" data-default="0"> <span id="stretchHueVal">off</span></label>
+    <label><span class="rlabel" data-for="stretchScaleSlider">Scale:</span> <input type="range" id="stretchScaleSlider" min="20" max="300" value="100" data-default="100"> <span id="stretchScaleVal">1.00</span></label>
+    <label><span class="rlabel" data-for="stretchExplodeSlider">Explode:</span> <input type="range" id="stretchExplodeSlider" min="0" max="100" value="0" data-default="0"> <span id="stretchExplodeVal">off</span></label>
+    <label>Blend: <select id="stretchBlend"><option value="normal">Normal</option><option value="feedCuts">Face cuts stretch</option><option value="stretchCuts">Stretch cuts feed</option><option value="xor">XOR</option><option value="mask">Feed masks stretch</option><option value="burn">Colour burn</option></select></label>
 
-    <div class="section">Style</div>
-    <label>Colour: <input type="color" id="colourPicker" value="#ffffff" style="width:40px;height:20px;vertical-align:middle;border:none;background:none;cursor:pointer;"> <span id="colourVal">#ffffff</span></label>
-    <label>Glow: <input type="range" id="glowSlider" min="0" max="100" value="0"> <span id="glowVal">off</span></label>
-    <label>Glow spread: <input type="range" id="glowSpreadSlider" min="1" max="80" value="10"> <span id="glowSpreadVal">10</span></label>
+    <div class="tb-pair">
+      <div><div class="trackball" id="tbCam"><div class="crosshair-h"></div><div class="crosshair-v"></div><div class="dot" id="dotCam"></div></div><span class="tb-label">← Cam offset</span></div>
+      <span class="tb-sep">│</span>
+      <div><div class="trackball" id="tbStretch"><div class="crosshair-h"></div><div class="crosshair-v"></div><div class="dot" id="dotStretch"></div></div><span class="tb-label">H/V axis →</span></div>
+    </div>
 
-    <div class="section">Point cloud</div>
-    <label>All points: <input type="range" id="pcAllSlider" min="0" max="100" value="0"> <span id="pcAllVal">off</span></label>
-    <label>Eyes: <input type="range" id="pcEyeSlider" min="0" max="100" value="0"> <span id="pcEyeVal">off</span></label>
-    <label>Mouth: <input type="range" id="pcMouthSlider" min="0" max="100" value="0"> <span id="pcMouthVal">off</span></label>
-    <label>Outline: <input type="range" id="pcOutlineSlider" min="0" max="100" value="0"> <span id="pcOutlineVal">off</span></label>
-    <label>Dot size: <input type="range" id="pcSizeSlider" min="5" max="60" value="15"> <span id="pcSizeVal">1.5</span></label>
+    <div class="section"><span>Audio reactive</span><div class="sec-btns"><button class="sec-btn" onclick="toggleLock('audio',this)">🔓</button><button class="sec-btn" onclick="homeSection('audio')" title="Gentle return to defaults">🏠</button><button class="sec-btn" onclick="resetSection('audio')">⟲</button><button class="sec-btn" onclick="randomSection('audio')">🎲</button></div></div>
+    <div class="preset-row"><button class="panel-btn" id="micBtn" onclick="toggleMic()">🎤 Mic off</button></div>
+    <label>Mode: <select id="audioMode"><option value="waveform">Waveform</option><option value="bands">Freq bands</option></select></label>
+    <label><span class="rlabel" data-for="audioMixSlider">Mix:</span> <input type="range" id="audioMixSlider" min="0" max="100" value="50" data-default="50"> <span id="audioMixVal">0.50</span></label>
+    <label><span class="rlabel" data-for="audioGainSlider">Gain:</span> <input type="range" id="audioGainSlider" min="10" max="500" value="100" data-default="100"> <span id="audioGainVal">1.00</span></label>
+    <label><span class="rlabel" data-for="audioScrollSlider">Scroll:</span> <input type="range" id="audioScrollSlider" min="-100" max="100" value="0" data-default="0"> <span id="audioScrollVal">stop</span></label>
+    <div class="toggle-row">
+      <input type="checkbox" id="audioFaceLock" checked> <label for="audioFaceLock" style="display:inline;margin:0;cursor:pointer;">Face lock</label>
+    </div>
+
+    <div class="section"><span>Global</span><div class="sec-btns"><button class="sec-btn" onclick="toggleLock('global',this)">🔓</button><button class="sec-btn" onclick="homeSection('global')" title="Gentle return to defaults">🏠</button><button class="sec-btn" onclick="resetSection('global')">⟲</button></div></div>
+    <label><span class="rlabel" data-for="globalZoomSlider">Zoom:</span> <input type="range" id="globalZoomSlider" min="50" max="300" value="100" data-default="100"> <span id="globalZoomVal">1.00</span></label>
+    <div class="toggle-row">
+      <input type="checkbox" id="zoomAllCheck"> <label for="zoomAllCheck" style="display:inline;margin:0;cursor:pointer;">Post-everything zoom</label>
+    </div>
+    <label><span class="rlabel" data-for="safeAreaSlider">Safe area:</span> <input type="range" id="safeAreaSlider" min="0" max="40" value="0" data-default="0"> <span id="safeAreaVal">off</span></label>
+    <div class="toggle-row">
+      <input type="checkbox" id="safeFlipCheck"> <label for="safeFlipCheck" style="display:inline;margin:0;cursor:pointer;">Flip lines at boundary</label>
+    </div>
+
+    <div class="section"><span>FX triggers</span><div class="sec-btns"><button class="sec-btn" onclick="toggleLock('fx',this)">🔓</button><button class="sec-btn" onclick="homeSection('fx')" title="Gentle return to defaults">🏠</button><button class="sec-btn" onclick="resetSection('fx')">⟲</button></div></div>
+    <label><span class="rlabel" data-for="trailSlider">Trail:</span> <input type="range" id="trailSlider" min="0" max="95" value="0" data-default="0"> <span id="trailVal">off</span></label>
+    <div class="toggle-row">
+      <input type="checkbox" id="trailSafeClip"> <label for="trailSafeClip" style="display:inline;margin:0;cursor:pointer;">Trail outside safe area</label>
+    </div>
+    <label><span class="rlabel" data-for="colourCycleSlider">Colour cycle:</span> <input type="range" id="colourCycleSlider" min="0" max="100" value="0" data-default="0"> <span id="colourCycleVal">off</span></label>
+    <div style="color:#555;font-size:8px;margin:4px 0 2px;letter-spacing:0.5px;">KEYBOARD: <span style="color:#777;">Space</span>=pulse <span style="color:#777;">I</span>=invert <span style="color:#777;">F</span>=strobe <span style="color:#777;">E</span>=explode <span style="color:#777;">R</span>=implode</div>
+
+    <div class="section"><span>Presets</span></div>
+    <div class="preset-row">
+      <button onclick="savePreset(1)">Save 1</button><button onclick="loadPreset(1)">Load 1</button>
+      <button onclick="savePreset(2)">Save 2</button><button onclick="loadPreset(2)">Load 2</button>
+    </div>
+    <div class="preset-row">
+      <button onclick="savePreset(3)">Save 3</button><button onclick="loadPreset(3)">Load 3</button>
+      <button onclick="savePreset(4)">Save 4</button><button onclick="loadPreset(4)">Load 4</button>
+    </div>
+    <div class="preset-row">
+      <button onclick="exportPreset()">Export JSON</button>
+      <button onclick="document.getElementById('importFile').click()">Import</button>
+      <input type="file" id="importFile" accept=".json" style="display:none">
+    </div>
   </div>
+
+  <!-- ═══ RIGHT PANEL — Visualisation ═══ -->
+  <div id="controls" class="panel">
+    <div class="top-btns">
+      <button class="reset-all" onclick="resetAll()">⟲ Reset</button>
+      <button class="reset-all" style="background:#003;border-color:#036;color:#8ac;" onclick="gentleResetAll()">🏠 Gentle</button>
+      <button class="reset-all" style="background:#030;border-color:#060;color:#8c8;" onclick="randomAll()">🎲 Random</button>
+    </div>
+    <label><span class="rlabel" data-for="morphTimeSlider">Morph time:</span> <input type="range" id="morphTimeSlider" min="0" max="300" value="0" data-default="0"> <span id="morphTimeVal">snap</span></label>
+
+    <div class="section"><span>Lines</span><div class="sec-btns"><button class="sec-btn" onclick="toggleLock('lines',this)">🔓</button><button class="sec-btn" onclick="homeSection('lines')" title="Gentle return to defaults">🏠</button><button class="sec-btn" onclick="resetSection('lines')">⟲</button><button class="sec-btn" onclick="randomSection('lines')">🎲</button></div></div>
+    <label><span class="rlabel" data-for="blurSlider">Blur:</span> <input type="range" id="blurSlider" min="0" max="30" value="15" data-default="15"> <span id="blurVal">15</span></label>
+    <label><span class="rlabel" data-for="dispSlider">Displace:</span> <input type="range" id="dispSlider" min="0" max="300" value="86" data-default="86"> <span id="dispVal">86</span></label>
+    <label><span class="rlabel" data-for="powSlider">Power:</span> <input type="range" id="powSlider" min="0" max="200" value="149" data-default="149"> <span id="powVal">1.49</span></label>
+    <label><span class="rlabel" data-for="thickSlider">Thickness:</span> <input type="range" id="thickSlider" min="1" max="240" value="16" data-default="16"> <span id="thickVal">1.6</span></label>
+
+    <div class="section"><span>Face depth</span><div class="sec-btns"><button class="sec-btn" onclick="toggleLock('depth',this)">🔓</button><button class="sec-btn" onclick="homeSection('depth')" title="Gentle return to defaults">🏠</button><button class="sec-btn" onclick="resetSection('depth')">⟲</button><button class="sec-btn" onclick="randomSection('depth')">🎲</button></div></div>
+    <label><span class="rlabel" data-for="eyeSlider">Eyes:</span> <input type="range" id="eyeSlider" min="-50" max="30" value="8" data-default="8"> <span id="eyeVal">0.08</span></label>
+    <label><span class="rlabel" data-for="mouthSlider">Mouth:</span> <input type="range" id="mouthSlider" min="-30" max="60" value="52" data-default="52"> <span id="mouthVal">0.52</span></label>
+
+    <div class="section"><span>Ghost features</span><div class="sec-btns"><button class="sec-btn" onclick="toggleLock('ghost',this)">🔓</button><button class="sec-btn" onclick="homeSection('ghost')" title="Gentle return to defaults">🏠</button><button class="sec-btn" onclick="resetSection('ghost')">⟲</button><button class="sec-btn" onclick="randomSection('ghost')">🎲</button></div></div>
+    <label><span class="rlabel" data-for="eyeOpSlider">Eye opacity:</span> <input type="range" id="eyeOpSlider" min="0" max="100" value="25" data-default="25"> <span id="eyeOpVal">0.25</span></label>
+    <label><span class="rlabel" data-for="mouthOpSlider">Mouth opacity:</span> <input type="range" id="mouthOpSlider" min="0" max="100" value="20" data-default="20"> <span id="mouthOpVal">0.20</span></label>
+    <label><span class="rlabel" data-for="ghostSubSlider">Depth subtract:</span> <input type="range" id="ghostSubSlider" min="0" max="100" value="0" data-default="0"> <span id="ghostSubVal">off</span></label>
+    <label><span class="rlabel" data-for="ghostPullSlider">Depth pull:</span> <input type="range" id="ghostPullSlider" min="0" max="100" value="0" data-default="0"> <span id="ghostPullVal">off</span></label>
+
+    <div class="section"><span>Vertical lines</span><div class="sec-btns"><button class="sec-btn" onclick="toggleLock('vlines',this)">🔓</button><button class="sec-btn" onclick="homeSection('vlines')" title="Gentle return to defaults">🏠</button><button class="sec-btn" onclick="resetSection('vlines')">⟲</button><button class="sec-btn" onclick="randomSection('vlines')">🎲</button></div></div>
+    <label><span class="rlabel" data-for="eyeVertSlider">Eye verts:</span> <input type="range" id="eyeVertSlider" min="0" max="100" value="30" data-default="30"> <span id="eyeVertVal">0.30</span></label>
+    <label><span class="rlabel" data-for="mouthVertSlider">Mouth verts:</span> <input type="range" id="mouthVertSlider" min="0" max="100" value="25" data-default="25"> <span id="mouthVertVal">0.25</span></label>
+    <label><span class="rlabel" data-for="vertDensSlider">Density:</span> <input type="range" id="vertDensSlider" min="2" max="30" value="8" data-default="8"> <span id="vertDensVal">8</span></label>
+
+    <div class="section"><span>Point cloud</span><div class="sec-btns"><button class="sec-btn" onclick="toggleLock('pc',this)">🔓</button><button class="sec-btn" onclick="homeSection('pc')" title="Gentle return to defaults">🏠</button><button class="sec-btn" onclick="resetSection('pc')">⟲</button><button class="sec-btn" onclick="randomSection('pc')">🎲</button></div></div>
+    <label><span class="rlabel" data-for="pcAllSlider">All:</span> <input type="range" id="pcAllSlider" min="0" max="100" value="0" data-default="0"> <span id="pcAllVal">off</span></label>
+    <label><span class="rlabel" data-for="pcEyeSlider">Eyes:</span> <input type="range" id="pcEyeSlider" min="0" max="100" value="0" data-default="0"> <span id="pcEyeVal">off</span></label>
+    <label><span class="rlabel" data-for="pcMouthSlider">Mouth:</span> <input type="range" id="pcMouthSlider" min="0" max="100" value="0" data-default="0"> <span id="pcMouthVal">off</span></label>
+    <label><span class="rlabel" data-for="pcOutlineSlider">Outline:</span> <input type="range" id="pcOutlineSlider" min="0" max="100" value="0" data-default="0"> <span id="pcOutlineVal">off</span></label>
+    <label><span class="rlabel" data-for="pcSizeSlider">Dot size:</span> <input type="range" id="pcSizeSlider" min="5" max="60" value="15" data-default="15"> <span id="pcSizeVal">1.5</span></label>
+
+    <div class="section"><span>Style</span><div class="sec-btns"><button class="sec-btn" onclick="toggleLock('style',this)">🔓</button><button class="sec-btn" onclick="homeSection('style')" title="Gentle return to defaults">🏠</button><button class="sec-btn" onclick="resetSection('style')">⟲</button><button class="sec-btn" onclick="randomSection('style')">🎲</button></div></div>
+    <label>Colour: <input type="color" id="colourPicker" value="#ffffff" style="width:35px;height:18px;vertical-align:middle;border:none;background:none;cursor:pointer;"> <span id="colourVal">#fff</span></label>
+    <label><span class="rlabel" data-for="glowSlider">Glow:</span> <input type="range" id="glowSlider" min="0" max="100" value="0" data-default="0"> <span id="glowVal">off</span></label>
+    <label><span class="rlabel" data-for="glowSpreadSlider">Spread:</span> <input type="range" id="glowSpreadSlider" min="1" max="80" value="10" data-default="10"> <span id="glowSpreadVal">10</span></label>
+
+    <div class="section"><span>Layer transforms</span><div class="sec-btns"><button class="sec-btn" onclick="toggleLock('transforms',this)">🔓</button><button class="sec-btn" onclick="homeSection('transforms')" title="Gentle return to centre">🏠</button><button class="sec-btn" onclick="resetSection('transforms')">⟲</button><button class="sec-btn" onclick="randomSection('transforms')">🎲</button></div></div>
+    <div style="display:flex;justify-content:space-between;">
+      <div><div class="trackball" id="tbGhost"><div class="crosshair-h"></div><div class="crosshair-v"></div><div class="dot" id="dotGhost"></div></div><span class="tb-label">Ghost</span></div>
+      <div><div class="trackball" id="tbVert"><div class="crosshair-h"></div><div class="crosshair-v"></div><div class="dot" id="dotVert"></div></div><span class="tb-label">Verts</span></div>
+      <div><div class="trackball" id="tbPC"><div class="crosshair-h"></div><div class="crosshair-v"></div><div class="dot" id="dotPC"></div></div><span class="tb-label">Points</span></div>
+    </div>
+    <label><span class="rlabel" data-for="ghostScaleSlider">Ghost scale:</span> <input type="range" id="ghostScaleSlider" min="20" max="300" value="100" data-default="100"> <span id="ghostScaleVal">1.0</span></label>
+    <label><span class="rlabel" data-for="vertScaleSlider">Vert scale:</span> <input type="range" id="vertScaleSlider" min="20" max="300" value="100" data-default="100"> <span id="vertScaleVal">1.0</span></label>
+    <label><span class="rlabel" data-for="pcScaleSlider">PC scale:</span> <input type="range" id="pcScaleSlider" min="20" max="300" value="100" data-default="100"> <span id="pcScaleVal">1.0</span></label>
+    <label><span class="rlabel" data-for="ghostRotSlider">Ghost rot:</span> <input type="range" id="ghostRotSlider" min="-180" max="180" value="0" data-default="0"> <span id="ghostRotVal">0°</span></label>
+    <label><span class="rlabel" data-for="vertRotSlider">Vert rot:</span> <input type="range" id="vertRotSlider" min="-180" max="180" value="0" data-default="0"> <span id="vertRotVal">0°</span></label>
+    <label><span class="rlabel" data-for="pcRotSlider">PC rot:</span> <input type="range" id="pcRotSlider" min="-180" max="180" value="0" data-default="0"> <span id="pcRotVal">0°</span></label>
+  </div>
+
   <video id="webcam" autoplay playsinline></video>
   <canvas id="canvas"></canvas>
 
   <script>
     document.getElementById('gear').onclick = () => {
-      const c = document.getElementById('controls');
-      const visible = c.style.display !== 'none';
-      c.style.display = visible ? 'none' : 'block';
-      document.body.classList.toggle('show-ui', !visible);
+      const cam = document.getElementById('camPanel');
+      const ctrl = document.getElementById('controls');
+      const vis = ctrl.style.display !== 'none';
+      cam.style.display = vis ? 'none' : 'block';
+      ctrl.style.display = vis ? 'none' : 'block';
+      document.body.classList.toggle('show-ui', !vis);
     };
+    document.querySelectorAll('.rlabel').forEach(lbl => {
+      lbl.addEventListener('click', () => {
+        const s = document.getElementById(lbl.dataset.for);
+        if (s && s.dataset.default !== undefined) {
+          s.value = s.dataset.default;
+          if (s.oninput) s.oninput();
+        }
+      });
+    });
   </script>
   <script type="module" src="main.js"></script>
 </body>
