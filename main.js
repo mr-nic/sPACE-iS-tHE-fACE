@@ -41,7 +41,8 @@ const SECTIONS = {
   stretch:    { sliders:["stretchOpSlider","stretchAmtSlider","stretchPosSlider","stretchDensSlider","stretchContSlider","stretchHueSlider","stretchScaleSlider","stretchExplodeSlider"], trackballs:["stretch"], selects:["stretchBlend"] },
   audio:      { sliders:["audioMixSlider","audioGainSlider","audioScrollSlider"], checkboxes:["audioFaceLock"], selects:["audioMode"] },
   global:     { sliders:["globalZoomSlider","safeAreaSlider"], checkboxes:["safeFlipCheck","zoomAllCheck"] },
-  fx:         { sliders:["trailSlider","colourCycleSlider","chaosSlider"], checkboxes:["trailSafeClip"] }
+  fx:         { sliders:["trailSlider","colourCycleSlider"], checkboxes:["trailSafeClip"] },
+  chaos:      { sliders:["chaosSlider"] }
 };
 
 // ─── Slider wiring ─────────────────────────────────────────────────
@@ -105,10 +106,15 @@ colourPicker.oninput = () => colourValEl.textContent = colourPicker.value;
 
 // ─── Section lock state ────────────────────────────────────────────
 const sectionLocks = {};
+// Chaos locked by default — must be explicitly unlocked to be affected by Random All
+sectionLocks.chaos = true;
 
 window.toggleLock = function(name, btn) {
   sectionLocks[name] = !sectionLocks[name];
-  if (btn) btn.classList.toggle('locked', sectionLocks[name]);
+  if (btn) {
+    btn.classList.toggle('locked', sectionLocks[name]);
+    btn.textContent = sectionLocks[name] ? '🔒' : '🔓';
+  }
 };
 
 function isLocked(name) { return !!sectionLocks[name]; }
@@ -246,11 +252,30 @@ window.resetSection = function(name) {
   if (isLocked(name)) return;
   const sec = SECTIONS[name];
   if (!sec) return;
-  if (sec.sliders) sec.sliders.forEach(id => resetSlider(id));
-  if (sec.trackballs) sec.trackballs.forEach(k => resetTrackball(k));
+  const morphTime = getMorphTime();
+
+  if (morphTime > 0) {
+    // Morph to defaults
+    const target = {};
+    if (sec.sliders) sec.sliders.forEach(id => {
+      const s = sl(id);
+      if (s && s.dataset.default !== undefined) target[id] = +s.dataset.default;
+    });
+    if (sec.trackballs) {
+      target.trackballs = {};
+      sec.trackballs.forEach(k => { target.trackballs[k] = {x:0, y:0}; });
+    }
+    if (sec.colour) target.colour = "#ffffff";
+    startMorph(target);
+  } else {
+    // Instant snap
+    if (sec.sliders) sec.sliders.forEach(id => resetSlider(id));
+    if (sec.trackballs) sec.trackballs.forEach(k => resetTrackball(k));
+    if (sec.colour) { colourPicker.value = "#ffffff"; colourValEl.textContent = "#fff"; }
+  }
+  // Selects and checkboxes always snap
   if (sec.selects) sec.selects.forEach(id => { const el = sl(id); if (el) el.selectedIndex = 0; });
   if (sec.checkboxes) sec.checkboxes.forEach(id => { const el = sl(id); if (el) el.checked = false; });
-  if (sec.colour) { colourPicker.value = "#ffffff"; colourValEl.textContent = "#fff"; }
 };
 
 // Gentle return to home — uses morph system to smoothly ease back to defaults

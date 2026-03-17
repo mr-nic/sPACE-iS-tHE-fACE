@@ -13,6 +13,19 @@
     #status { position: fixed; top: 10px; left: 50%; transform: translateX(-50%); color: #444; font-family: monospace; font-size: 13px; z-index: 20; }
     #gear { position: fixed; top: 10px; right: 10px; z-index: 21; background: none; border: 1px solid #333; color: #666; font: 14px monospace; padding: 2px 8px; cursor: pointer; border-radius: 3px; opacity: 0.8; }
     #gear:hover { opacity: 1; }
+    #helpBtn { position: fixed; top: 10px; right: 42px; z-index: 21; background: none; border: 1px solid #333; color: #666; font: 14px monospace; padding: 2px 8px; cursor: pointer; border-radius: 3px; opacity: 0.8; }
+    #helpBtn:hover { opacity: 1; }
+    #helpPanel {
+      display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%);
+      color: #bbb; font-family: monospace; font-size: 10px; z-index: 30;
+      background: rgba(0,0,0,0.95); padding: 20px; border-radius: 6px; border: 1px solid #333;
+      max-width: 520px; max-height: 80vh; overflow-y: auto; line-height: 1.6;
+    }
+    #helpPanel h2 { color: #fff; font-size: 13px; margin: 12px 0 4px; letter-spacing: 1px; }
+    #helpPanel h2:first-child { margin-top: 0; }
+    #helpPanel .hk { color: #0af; }
+    #helpPanel .close-help { float: right; cursor: pointer; color: #666; font-size: 16px; border: none; background: none; }
+    #helpPanel .close-help:hover { color: #fff; }
     .panel {
       display: none; position: fixed; top: 40px; bottom: 10px;
       color: #999; font-family: monospace; font-size: 10px; z-index: 20;
@@ -55,7 +68,60 @@
 </head>
 <body>
   <div id="status">Loading…</div>
+  <button id="helpBtn">?</button>
   <button id="gear">⚙</button>
+
+  <!-- ═══ HELP PANEL ═══ -->
+  <div id="helpPanel">
+    <button class="close-help" onclick="document.getElementById('helpPanel').style.display='none'">✕</button>
+    <h2>sPACE iS tHE faCE — Quick Guide</h2>
+    Click <b>⚙</b> to toggle control panels. Right panel = visualisation. Left panel = camera &amp; FX.
+
+    <h2>Basics</h2>
+    Your webcam face is tracked as 478 3D points. These create a depth map sampled as 23 horizontal contour lines — flat where there's no face, deformed where there is.
+
+    <h2>Per-Section Controls</h2>
+    <b>🔓/🔒 Lock</b> — blocks Reset All, Random All, and Gentle Reset from touching this section. Goes orange when locked. Manual tweaks still work.<br>
+    <b>🏠 Home</b> — gentle morph back to defaults (uses morph time, minimum 2s).<br>
+    <b>⟲ Reset</b> — returns to defaults (uses morph time if set, otherwise instant).<br>
+    <b>🎲 Random</b> — randomises the section (morphs if morph time is set).<br>
+    <b>Click a label name</b> — instant snap that single slider to its default.<br>
+    <b>Tip:</b> Lock any sections you don't want affected before hitting Random All or Gentle Reset.
+
+    <h2>Chaos</h2>
+    The Chaos slider progressively destroys your carefully designed look. At low values it adds subtle jitter. At high values it fires random pulses, strobes, and explodes. Chaos is <b>locked by default</b> — Random All won't touch it unless you unlock it. When you drop chaos back to zero, all parameters restore to where they were before.
+
+    <h2>Audio Track</h2>
+    Load a .wav or .mp3 file. It streams (no memory issues with large files). Check <b>Route to audio reactive</b> to feed it through the contour lines and BPM detector. Enable <b>Auto-detect from mic</b> in BPM sync to detect the tempo from the track.
+
+    <h2>Timeline</h2>
+    Build a sequence of visual states synced to your audio track:<br>
+    1. Load your track and play it<br>
+    2. Pause at a section change<br>
+    3. Set up your look<br>
+    4. Hit <b>+ Add cue</b> — captures the current state and audio position<br>
+    5. Each cue shows: <span class="hk">timestamp</span> | name | morph duration<br>
+    6. Hit <b>▶ Play</b> — starts the audio and triggers cues at their timestamps<br>
+    Cues without timestamps auto-advance using their morph duration.
+
+    <h2>BPM Sync</h2>
+    <b>Tap</b> to set tempo manually. <b>Auto-detect</b> picks up beats from mic or audio track. Enable <b>Auto-pulse</b> or <b>Auto-strobe</b> to fire effects on each beat. Use the <b>Division</b> selector for double/half time.
+
+    <h2>Recording</h2>
+    Hit <b>● REC</b> to capture the canvas at 60fps. When you stop, it downloads the video plus an SRT timecode file logging every cue change, FX trigger, and chaos level — drag the SRT into your video editor to see markers on the timeline.
+
+    <h2>Keyboard Shortcuts</h2>
+    <span class="hk">Space</span> = pulse &nbsp; <span class="hk">I</span> = invert &nbsp; <span class="hk">F</span> = strobe &nbsp; <span class="hk">E</span> = explode &nbsp; <span class="hk">R</span> = implode<br>
+    <span class="hk">N</span> = next timeline cue &nbsp; <span class="hk">Ctrl+Z</span> = undo
+
+    <h2>Presets</h2>
+    4 save/load slots stored in your browser. Export/Import as JSON files. Import a preset JSON into the timeline to use it as a cue.
+
+    <h2>Tips</h2>
+    • Use <b>Morph time</b> to control how smoothly everything transitions — affects Reset, Random, Home, and timeline cues.<br>
+    • The webcam overlay is drawn last, on top of everything. Use luma key + invert to key out bright or dark backgrounds.<br>
+    • <b>Ctrl+Shift+R</b> to force reload after updates (browser caching).
+  </div>
 
   <!-- ═══ LEFT PANEL — Camera & FX ═══ -->
   <div id="camPanel" class="panel">
@@ -119,6 +185,8 @@
       <input type="checkbox" id="trailSafeClip"> <label for="trailSafeClip" style="display:inline;margin:0;cursor:pointer;">Trail outside safe area</label>
     </div>
     <label><span class="rlabel" data-for="colourCycleSlider">Colour cycle:</span> <input type="range" id="colourCycleSlider" min="0" max="100" value="0" data-default="0"> <span id="colourCycleVal">off</span></label>
+
+    <div class="section"><span>Chaos</span><div class="sec-btns"><button class="sec-btn locked" onclick="toggleLock('chaos',this)">🔒</button><button class="sec-btn" onclick="homeSection('chaos')" title="Gentle return to zero">🏠</button><button class="sec-btn" onclick="resetSection('chaos')">⟲</button></div></div>
     <label><span class="rlabel" data-for="chaosSlider">Chaos:</span> <input type="range" id="chaosSlider" min="0" max="100" value="0" data-default="0"> <span id="chaosVal">off</span></label>
     <div style="color:#555;font-size:8px;margin:4px 0 2px;letter-spacing:0.5px;">KEYBOARD: <span style="color:#777;">Space</span>=pulse <span style="color:#777;">I</span>=invert <span style="color:#777;">F</span>=strobe <span style="color:#777;">E</span>=explode <span style="color:#777;">R</span>=implode <span style="color:#777;">Z</span>=undo <span style="color:#777;">N</span>=next cue</div>
 
@@ -254,6 +322,10 @@
       cam.style.display = vis ? 'none' : 'block';
       ctrl.style.display = vis ? 'none' : 'block';
       document.body.classList.toggle('show-ui', !vis);
+    };
+    document.getElementById('helpBtn').onclick = () => {
+      const h = document.getElementById('helpPanel');
+      h.style.display = h.style.display === 'block' ? 'none' : 'block';
     };
     document.querySelectorAll('.rlabel').forEach(lbl => {
       lbl.addEventListener('click', () => {
