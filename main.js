@@ -1633,8 +1633,9 @@ function pickRecordingFormat(){
 
 recBtn.onclick=()=>{
   if(mediaRecorder&&mediaRecorder.state==="recording"){
-    mediaRecorder.stop();recBtn.textContent="● REC";recBtn.classList.remove("recording");
+    logTimecodeEvent("recording_stop");
     isRecording=false;
+    mediaRecorder.stop();recBtn.textContent="● REC";recBtn.classList.remove("recording");
   }else{
     recordedChunks=[];
     timecodeLog=[];
@@ -1646,7 +1647,6 @@ recBtn.onclick=()=>{
     mediaRecorder=new MediaRecorder(stream,{mimeType:fmt.mimeType,videoBitsPerSecond:20_000_000});
     mediaRecorder.ondataavailable=e=>{if(e.data.size>0)recordedChunks.push(e.data);};
     mediaRecorder.onstop=()=>{
-      logTimecodeEvent("recording_stop");
       const blob=new Blob(recordedChunks,{type:fmt.type});
       const url=URL.createObjectURL(blob);
       const a=document.createElement("a");a.href=url;a.download="space-is-the-face."+fmt.ext;a.click();URL.revokeObjectURL(url);
