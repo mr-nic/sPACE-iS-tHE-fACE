@@ -1266,7 +1266,27 @@ let chaosLastLoggedLevel=-1;
 
 function applyChaos(){
   const chaosAmt=sl("chaosSlider")?+sl("chaosSlider").value/100:0;
-  if(chaosAmt<=0){chaosBaseState=null;chaosLastLoggedLevel=-1;return;}
+  if(chaosAmt<=0){
+    // Restore base state when chaos is turned off
+    if(chaosBaseState){
+      CHAOS_SLIDERS.forEach(id=>{
+        const s=sl(id);
+        if(s&&chaosBaseState[id]!==undefined){s.value=chaosBaseState[id];if(s.oninput)s.oninput();}
+      });
+      // Restore trackball positions
+      if(chaosBaseState._trackballs){
+        Object.keys(chaosBaseState._trackballs).forEach(k=>{
+          if(trackballState[k]){
+            trackballState[k]={...chaosBaseState._trackballs[k]};
+            const d=sl("dot"+k.charAt(0).toUpperCase()+k.slice(1));
+            if(d){d.style.left=((trackballState[k].x+1)/2*100)+"%";d.style.top=((trackballState[k].y+1)/2*100)+"%";}
+          }
+        });
+      }
+      chaosBaseState=null;
+    }
+    chaosLastLoggedLevel=-1;return;
+  }
   chaosFrameCount++;
 
   // Log chaos level changes (quantised to 10% steps)
@@ -1280,6 +1300,10 @@ function applyChaos(){
   if(!chaosBaseState){
     chaosBaseState={};
     CHAOS_SLIDERS.forEach(id=>{const s=sl(id);if(s)chaosBaseState[id]=+s.value;});
+    chaosBaseState._trackballs={};
+    Object.keys(trackballState).forEach(k=>{
+      chaosBaseState._trackballs[k]={x:trackballState[k].x,y:trackballState[k].y};
+    });
   }
 
   // Level 1 (0–0.3): subtle jitter on visual sliders
@@ -1803,10 +1827,24 @@ function detectBPM(){
 }
 
 // ─── Timeline / preset sequencer ──────────────────────────────────
-let timelineCues=[]; // [{state, transitionTime, label}]
+let timelineCues=[]; // [{state, transitionTime, label, triggerAt}]
 let timelineIndex=-1;
 let timelinePlaying=false;
 let timelineTimer=null;
+
+function fmtTimestamp(s){
+  if(s===null||s===undefined||!isFinite(s))return"--:--";
+  const m=Math.floor(s/60),sec=Math.floor(s%60);
+  return m+":"+String(sec).padStart(2,'0');
+}
+
+function parseTimestamp(str){
+  if(!str||str==="--:--")return null;
+  const parts=str.split(":");
+  if(parts.length===2)return(+parts[0])*60+(+parts[1]);
+  if(parts.length===1)return+parts[0];
+  return null;
+}
 
 function renderTimelineCues(){
   const container=sl("timelineCues");
@@ -1814,10 +1852,12 @@ function renderTimelineCues(){
   if(timelineCues.length===0){container.innerHTML='<div style="color:#444;font-size:8px;">No cues. Add current state or import a timeline.</div>';return;}
   container.innerHTML=timelineCues.map((c,i)=>{
     const active=i===timelineIndex?'color:#0f0;':'color:#999;';
+    const atStr=c.triggerAt!==null&&c.triggerAt!==undefined?fmtTimestamp(c.triggerAt):'--:--';
     return `<div style="${active}font-size:9px;display:flex;align-items:center;gap:3px;margin:1px 0;">
       <span style="min-width:14px;">${i+1}.</span>
-      <input type="text" value="${c.label||'Cue '+(i+1)}" onchange="renameTimelineCue(${i},this.value)" style="width:55px;background:#111;color:#aaa;border:1px solid #333;font:8px monospace;padding:1px 2px;border-radius:2px;">
-      <input type="number" value="${c.transitionTime}" onchange="setTimelineCueTime(${i},this.value)" min="0" max="60" step="0.5" style="width:36px;background:#111;color:#aaa;border:1px solid #333;font:8px monospace;padding:1px 2px;border-radius:2px;" title="Transition time (s)">
+      <input type="text" value="${atStr}" onchange="setTimelineCueAt(${i},this.value)" style="width:32px;background:#111;color:#0af;border:1px solid #333;font:8px monospace;padding:1px 2px;border-radius:2px;text-align:center;" title="Trigger at (m:ss)">
+      <input type="text" value="${c.label||'Cue '+(i+1)}" onchange="renameTimelineCue(${i},this.value)" style="width:45px;background:#111;color:#aaa;border:1px solid #333;font:8px monospace;padding:1px 2px;border-radius:2px;">
+      <input type="number" value="${c.transitionTime}" onchange="setTimelineCueTime(${i},this.value)" min="0" max="60" step="0.5" style="width:30px;background:#111;color:#aaa;border:1px solid #333;font:8px monospace;padding:1px 2px;border-radius:2px;" title="Morph duration (s)">
       <span style="color:#555;font-size:7px;">s</span>
       <button class="sec-btn" onclick="removeTimelineCue(${i})" style="color:#c55;">✕</button>
       <button class="sec-btn" onclick="moveTimelineCue(${i},-1)">↑</button>
@@ -1828,12 +1868,31 @@ function renderTimelineCues(){
 
 window.addTimelineCue=function(){
   const morphTime=getMorphTime();
-  timelineCues.push({state:getState(),transitionTime:morphTime>0?morphTime:3,label:'Cue '+(timelineCues.length+1)});
+  // Auto-capture audio position if track is loaded
+  let triggerAt=null;
+  if(audioTrackEl&&audioTrackEl.duration){
+    triggerAt=Math.round(audioTrackEl.currentTime);
+  }
+  timelineCues.push({
+    state:getState(),
+    transitionTime:morphTime>0?morphTime:3,
+    label:'Cue '+(timelineCues.length+1),
+    triggerAt:triggerAt
+  });
+  // Auto-sort by triggerAt if timestamps are set
+  sortTimelineCues();
   renderTimelineCues();
   updateTimelineStatus();
 };
 window.renameTimelineCue=function(i,name){if(timelineCues[i])timelineCues[i].label=name;};
 window.setTimelineCueTime=function(i,t){if(timelineCues[i])timelineCues[i].transitionTime=Math.max(0,+t);};
+window.setTimelineCueAt=function(i,val){
+  if(!timelineCues[i])return;
+  const t=parseTimestamp(val);
+  timelineCues[i].triggerAt=t;
+  sortTimelineCues();
+  renderTimelineCues();
+};
 window.removeTimelineCue=function(i){timelineCues.splice(i,1);renderTimelineCues();updateTimelineStatus();};
 window.moveTimelineCue=function(i,dir){
   const j=i+dir;
@@ -1842,11 +1901,33 @@ window.moveTimelineCue=function(i,dir){
   renderTimelineCues();
 };
 
+function sortTimelineCues(){
+  // Only sort if all cues have timestamps
+  const allHaveTime=timelineCues.every(c=>c.triggerAt!==null&&c.triggerAt!==undefined);
+  if(allHaveTime&&timelineCues.length>1){
+    timelineCues.sort((a,b)=>a.triggerAt-b.triggerAt);
+  }
+}
+
 window.playTimeline=function(){
   if(timelineCues.length===0)return;
   timelinePlaying=true;
-  timelineIndex=0;
-  morphToCue(0);
+  timelineIndex=-1; // will be set by sync loop or manual advance
+
+  // If audio track is loaded and cues have timestamps, start audio and let sync handle it
+  const hasTimestamps=timelineCues.some(c=>c.triggerAt!==null&&c.triggerAt!==undefined);
+  if(hasTimestamps&&audioTrackEl&&audioTrackEl.duration){
+    if(!audioTrackPlaying){
+      audioTrackEl.currentTime=0;
+      audioTrackEl.play();
+      audioTrackPlaying=true;
+      const btn=sl("audioPlayBtn");if(btn)btn.textContent="❚❚";
+    }
+  }else{
+    // No timestamps — old behaviour: advance through cues with timers
+    timelineIndex=0;
+    morphToCue(0);
+  }
   updateTimelineStatus();
 };
 
@@ -1866,12 +1947,35 @@ window.nextTimelineCue=function(){
   updateTimelineStatus();
 };
 
+// Audio-synced timeline: check audio position each frame
+function tickTimelineSync(){
+  if(!timelinePlaying)return;
+  if(!audioTrackEl||!audioTrackPlaying)return;
+
+  const pos=audioTrackEl.currentTime;
+  const hasTimestamps=timelineCues.some(c=>c.triggerAt!==null&&c.triggerAt!==undefined);
+  if(!hasTimestamps)return; // timer-based mode, handled by morphToCue scheduling
+
+  // Find the latest cue whose triggerAt has been reached
+  let targetIndex=-1;
+  for(let i=0;i<timelineCues.length;i++){
+    if(timelineCues[i].triggerAt!==null&&timelineCues[i].triggerAt!==undefined&&pos>=timelineCues[i].triggerAt){
+      targetIndex=i;
+    }
+  }
+
+  // If we've reached a new cue, trigger it
+  if(targetIndex>=0&&targetIndex!==timelineIndex){
+    morphToCue(targetIndex);
+  }
+}
+
 function morphToCue(i){
   const cue=timelineCues[i];
   if(!cue)return;
   timelineIndex=i;
   renderTimelineCues();
-  logTimecodeEvent("cue_change",{cue:i,label:cue.label,transition:cue.transitionTime});
+  logTimecodeEvent("cue_change",{cue:i,label:cue.label,transition:cue.transitionTime,triggerAt:cue.triggerAt});
   const dur=cue.transitionTime;
   if(dur<=0){
     setState(cue.state);
@@ -1889,16 +1993,15 @@ function morphToCue(i){
     morphDuration=dur*1000;
     morphStart=performance.now();
   }
-  // Schedule next cue if playing
-  if(timelinePlaying){
+  // Timer-based scheduling for cues WITHOUT timestamps (fallback)
+  const hasTimestamps=timelineCues.some(c=>c.triggerAt!==null&&c.triggerAt!==undefined);
+  if(timelinePlaying&&!hasTimestamps){
     if(timelineTimer)clearTimeout(timelineTimer);
     const nextI=(i+1)%timelineCues.length;
-    // Wait for transition + hold (transition time is the morph to THIS cue)
-    const waitMs=dur*1000+500; // 500ms hold after morph completes
+    const waitMs=dur*1000+500;
     timelineTimer=setTimeout(()=>{
       if(!timelinePlaying)return;
       if(nextI===0){
-        // Looped back to start — stop or loop
         timelinePlaying=false;
         updateTimelineStatus();
         renderTimelineCues();
@@ -1912,14 +2015,17 @@ function morphToCue(i){
 function updateTimelineStatus(){
   const el=sl("timelineStatus");
   if(!el)return;
-  if(timelinePlaying)el.textContent=`▶ Playing cue ${timelineIndex+1}/${timelineCues.length}`;
+  if(timelinePlaying){
+    const hasTs=timelineCues.some(c=>c.triggerAt!==null&&c.triggerAt!==undefined);
+    el.textContent=hasTs?`▶ Synced to audio — cue ${timelineIndex+1}/${timelineCues.length}`:`▶ Playing cue ${timelineIndex+1}/${timelineCues.length}`;
+  }
   else if(timelineCues.length>0)el.textContent=`${timelineCues.length} cue${timelineCues.length>1?'s':''} loaded`;
   else el.textContent='';
 }
 
 window.exportTimeline=function(){
   if(timelineCues.length===0)return;
-  const data=timelineCues.map(c=>({state:c.state,transitionTime:c.transitionTime,label:c.label}));
+  const data=timelineCues.map(c=>({state:c.state,transitionTime:c.transitionTime,label:c.label,triggerAt:c.triggerAt}));
   const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});
   const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="sitf-timeline.json";a.click();
 };
@@ -1931,14 +2037,18 @@ sl("timelineImportFile").onchange=e=>{
     try{
       const data=JSON.parse(r.result);
       if(Array.isArray(data)){
-        // Check if it's a timeline (array of cues) or a single preset
         if(data.length>0&&data[0].state){
-          // Timeline format
-          timelineCues=data.map((c,i)=>({state:c.state,transitionTime:c.transitionTime||3,label:c.label||'Cue '+(i+1)}));
+          timelineCues=data.map((c,i)=>({
+            state:c.state,
+            transitionTime:c.transitionTime||3,
+            label:c.label||'Cue '+(i+1),
+            triggerAt:c.triggerAt!==undefined?c.triggerAt:null
+          }));
         }
       }else if(typeof data==='object'&&data.colour){
-        // Single preset — add as a cue
-        timelineCues.push({state:data,transitionTime:3,label:'Imported'});
+        let triggerAt=null;
+        if(audioTrackEl&&audioTrackEl.duration)triggerAt=Math.round(audioTrackEl.currentTime);
+        timelineCues.push({state:data,transitionTime:3,label:'Imported',triggerAt:triggerAt});
       }
       renderTimelineCues();
       updateTimelineStatus();
@@ -1959,6 +2069,7 @@ function renderLoop(){
   updateAudioWaveform();
   detectBPM();
   updateAudioTrackUI();
+  tickTimelineSync();
   const result=faceLandmarker.detectForVideo(video,now);
   if(result.faceLandmarks&&result.faceLandmarks.length>0){
     currentLandmarks=result.faceLandmarks[0];
