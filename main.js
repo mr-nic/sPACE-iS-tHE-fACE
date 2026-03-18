@@ -519,6 +519,134 @@ async function startWebcam(){
   video.srcObject=s;return new Promise(r=>{video.onloadeddata=()=>{video.play();r();};});
 }
 
+// ─── Video file input ─────────────────────────────────────────────
+let videoFileActive=false;
+let videoFileName='';
+
+sl("videoFileBtn").onclick=()=>sl("videoFileInput").click();
+
+sl("videoFileInput").onchange=e=>{
+  const f=e.target.files[0];if(!f)return;
+  // Stop webcam if running
+  if(video.srcObject){
+    video.srcObject.getTracks().forEach(t=>t.stop());
+    video.srcObject=null;
+  }
+  videoFileName=f.name;
+  const url=URL.createObjectURL(f);
+  video.removeAttribute('srcObject');
+  video.src=url;
+  video.loop=true;
+  video.muted=true;
+  // Wait for video to be ready before playing
+  video.onloadeddata=()=>{
+    video.play();
+    videoFileActive=true;
+    lastTimestamp=-1; // Reset so detectForVideo accepts new timestamps
+    statusEl.textContent="Video: "+f.name;
+    // Show transport controls, show webcam button
+    const vc=sl("vidControls");if(vc)vc.style.display="block";
+    const wb=sl("webcamBtn");if(wb)wb.style.display="block";
+    const vn=sl("vidName");if(vn)vn.textContent=f.name;
+    updateVidPlayPauseState();
+  };
+  video.onerror=()=>{
+    statusEl.textContent="Video load error";
+    videoFileActive=false;
+  };
+  e.target.value='';
+};
+
+// ─── Video transport controls ─────────────────────────────────────
+function updateVidPlayPauseState(){
+  const playBtn=sl("vidPlayBtn"), pauseBtn=sl("vidPauseBtn");
+  if(!playBtn||!pauseBtn)return;
+  if(video.paused){
+    playBtn.style.borderColor="#0a0";playBtn.style.color="#0c0";
+    pauseBtn.style.borderColor="";pauseBtn.style.color="";
+  }else{
+    playBtn.style.borderColor="";playBtn.style.color="";
+    pauseBtn.style.borderColor="#f90";pauseBtn.style.color="#fa0";
+  }
+}
+
+window.vidPlay=function(){
+  if(!videoFileActive)return;
+  video.play();
+  lastTimestamp=-1;
+  updateVidPlayPauseState();
+};
+
+window.vidPause=function(){
+  if(!videoFileActive)return;
+  video.pause();
+  updateVidPlayPauseState();
+};
+
+window.vidStop=function(){
+  if(!videoFileActive)return;
+  video.pause();
+  video.currentTime=0;
+  lastTimestamp=-1;
+  updateVidPlayPauseState();
+};
+
+// Seek bar
+const vidSeekEl=sl("vidSeek");
+if(vidSeekEl){
+  let vidSeeking=false;
+  vidSeekEl.onmousedown=vidSeekEl.ontouchstart=()=>{vidSeeking=true;};
+  vidSeekEl.onmouseup=vidSeekEl.ontouchend=()=>{
+    vidSeeking=false;
+    if(videoFileActive&&video.duration){
+      video.currentTime=(vidSeekEl.value/1000)*video.duration;
+      lastTimestamp=-1;
+    }
+  };
+  vidSeekEl.oninput=()=>{
+    if(vidSeeking&&videoFileActive&&video.duration){
+      video.currentTime=(vidSeekEl.value/1000)*video.duration;
+      lastTimestamp=-1;
+    }
+  };
+}
+
+function updateVideoTransportUI(){
+  if(!videoFileActive)return;
+  const seekEl=sl("vidSeek"), timeEl=sl("vidTime");
+  if(seekEl&&video.duration&&!isNaN(video.duration)){
+    seekEl.value=Math.round((video.currentTime/video.duration)*1000);
+  }
+  if(timeEl&&video.duration&&!isNaN(video.duration)){
+    const cur=video.currentTime, dur=video.duration;
+    const fmt=t=>{const m=Math.floor(t/60),s=Math.floor(t%60);return m+":"+String(s).padStart(2,'0');};
+    timeEl.textContent=fmt(cur)+"/"+fmt(dur);
+  }
+}
+
+// ─── Switch back to webcam ────────────────────────────────────────
+const webcamBtnEl=sl("webcamBtn");
+if(webcamBtnEl){
+  webcamBtnEl.onclick=async()=>{
+    // Stop video file
+    video.pause();
+    if(video.src){URL.revokeObjectURL(video.src);video.removeAttribute('src');}
+    video.onloadeddata=null;
+    videoFileActive=false;
+    lastTimestamp=-1;
+    // Hide transport, hide webcam button
+    const vc=sl("vidControls");if(vc)vc.style.display="none";
+    webcamBtnEl.style.display="none";
+    // Restart webcam
+    try{
+      await startWebcam();
+      statusEl.textContent="Tracking…";
+    }catch(err){
+      statusEl.textContent="Webcam error: "+err.message;
+    }
+  };
+}
+
 // ─── Render depth ──────────────────────────────────────────────────
 function renderDepth(landmarks){
   const W=rawCanvas.width,H=rawCanvas.height,power=sl("powSlider").value/100;
@@ -1619,7 +1747,44 @@ function msToSRT(ms){
   return String(h).padStart(2,'0')+':'+String(m).padStart(2,'0')+':'+String(s).padStart(2,'0')+','+String(f).padStart(3,'0');
 }
 
+// ─── Mobile detection ─────────────────────────────────────────────
+const isMobile=/Android|iPhone|iPad|iPod|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
+// ─── Fullscreen (double-tap) ──────────────────────────────────────
+let lastTapTime=0;
+canvas.addEventListener("touchend",e=>{
+  const now=Date.now();
+  if(now-lastTapTime<300){
+    // Double-tap detected
+    e.preventDefault();
+    if(!document.fullscreenElement){
+      (document.documentElement.requestFullscreen||document.documentElement.webkitRequestFullscreen||function(){}).call(document.documentElement);
+    }else{
+      (document.exitFullscreen||document.webkitExitFullscreen||function(){}).call(document);
+    }
+  }
+  lastTapTime=now;
+},{passive:false});
+
+// Also add a mouse double-click for desktop
+canvas.addEventListener("dblclick",()=>{
+  if(!document.fullscreenElement){
+    (document.documentElement.requestFullscreen||document.documentElement.webkitRequestFullscreen||function(){}).call(document.documentElement);
+  }else{
+    (document.exitFullscreen||document.webkitExitFullscreen||function(){}).call(document);
+  }
+});
+
 function pickRecordingFormat(){
+  // Mobile-friendly: prefer VP8/WebM, lower bitrate
+  if(isMobile){
+    const mobileOpts=[
+      {mimeType:"video/webm;codecs=vp8",ext:"webm",type:"video/webm"},
+      {mimeType:"video/webm",ext:"webm",type:"video/webm"}
+    ];
+    for(const o of mobileOpts){ if(MediaRecorder.isTypeSupported(o.mimeType))return o; }
+    return mobileOpts[mobileOpts.length-1];
+  }
   const options=[
     {mimeType:"video/mp4;codecs=avc1.42E01E",ext:"mp4",type:"video/mp4"},
     {mimeType:"video/webm;codecs=h264",ext:"webm",type:"video/webm"},
@@ -1643,8 +1808,11 @@ recBtn.onclick=()=>{
     isRecording=true;
     logTimecodeEvent("recording_start");
     const fmt=pickRecordingFormat();
-    const stream=canvas.captureStream(60);
-    mediaRecorder=new MediaRecorder(stream,{mimeType:fmt.mimeType,videoBitsPerSecond:20_000_000});
+    // Mobile: 30fps, 2Mbps. Desktop: 60fps, 20Mbps
+    const fps=isMobile?30:60;
+    const bitrate=isMobile?2_000_000:20_000_000;
+    const stream=canvas.captureStream(fps);
+    mediaRecorder=new MediaRecorder(stream,{mimeType:fmt.mimeType,videoBitsPerSecond:bitrate});
     mediaRecorder.ondataavailable=e=>{if(e.data.size>0)recordedChunks.push(e.data);};
     mediaRecorder.onstop=()=>{
       const blob=new Blob(recordedChunks,{type:fmt.type});
@@ -1656,8 +1824,10 @@ recBtn.onclick=()=>{
         setTimeout(()=>exportTimecodesCSV(),1000);
       }
     };
-    mediaRecorder.start();recBtn.textContent="■ STOP";recBtn.classList.add("recording");
-    console.log("Recording:",fmt.mimeType,"@ 20Mbps");
+    // Mobile: request data every 1s to avoid memory issues
+    mediaRecorder.start(isMobile?1000:undefined);
+    recBtn.textContent="■ STOP";recBtn.classList.add("recording");
+    console.log("Recording:",fmt.mimeType,isMobile?"@ 2Mbps 30fps":"@ 20Mbps 60fps");
   }
 };
 
@@ -2095,22 +2265,45 @@ function renderLoop(){
   detectBPM();
   updateAudioTrackUI();
   tickTimelineSync();
-  const result=faceLandmarker.detectForVideo(video,now);
-  if(result.faceLandmarks&&result.faceLandmarks.length>0){
-    currentLandmarks=result.faceLandmarks[0];
+  updateVideoTransportUI();
+
+  // Guard: don't call detectForVideo if video isn't providing frames
+  const videoReady = video.readyState >= 2 && !video.paused && !video.ended;
+
+  let faceLandmarksThisFrame = null;
+
+  if (videoReady) {
+    try {
+      const result = faceLandmarker.detectForVideo(video, now);
+      if (result.faceLandmarks && result.faceLandmarks.length > 0) {
+        faceLandmarksThisFrame = result.faceLandmarks[0];
+      }
+    } catch(e) {
+      // detectForVideo can throw if video frame isn't ready
+    }
+  }
+
+  if (faceLandmarksThisFrame) {
+    currentLandmarks = faceLandmarksThisFrame;
     renderDepth(currentLandmarks);
-    let grid=buildGrid(currentLandmarks);grid=smoothGrid(grid);
-    lastGrid=grid;
-    render(currentLandmarks,grid);statusEl.textContent="";
-  }else{
-    const grid=prevGrid||Array.from({length:NUM_LINES},()=>new Float32Array(LINE_SAMPLES));
-    lastGrid=grid;
-    const safeAmt=sl("safeAreaSlider")?+sl("safeAreaSlider").value:0;
-    const safeFlip=sl("safeFlipCheck")?sl("safeFlipCheck").checked:false;
-    ctx.fillStyle="#000";ctx.fillRect(0,0,canvas.width,canvas.height);
-    ctx.save();ctx.translate(canvas.width,0);ctx.scale(-1,1);drawLines(grid,safeAmt,safeFlip);ctx.restore();
+    let grid = buildGrid(currentLandmarks); grid = smoothGrid(grid);
+    lastGrid = grid;
+    render(currentLandmarks, grid); statusEl.textContent = "";
+  } else if (currentLandmarks && lastGrid) {
+    // Video paused or no new face — keep rendering last good state
+    render(currentLandmarks, lastGrid);
+    if (videoFileActive && video.paused) statusEl.textContent = "⏸ Paused";
+    else if (videoFileActive) statusEl.textContent = "";
+    else statusEl.textContent = "No face detected";
+  } else {
+    const grid = prevGrid || Array.from({length:NUM_LINES}, () => new Float32Array(LINE_SAMPLES));
+    lastGrid = grid;
+    const safeAmt = sl("safeAreaSlider") ? +sl("safeAreaSlider").value : 0;
+    const safeFlip = sl("safeFlipCheck") ? sl("safeFlipCheck").checked : false;
+    ctx.fillStyle = "#000"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.save(); ctx.translate(canvas.width, 0); ctx.scale(-1, 1); drawLines(grid, safeAmt, safeFlip); ctx.restore();
     drawWebcamOverlay();
-    statusEl.textContent="No face detected";
+    statusEl.textContent = "No face detected";
   }
   requestAnimationFrame(renderLoop);
 }

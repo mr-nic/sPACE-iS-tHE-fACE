@@ -56,7 +56,7 @@
     .reset-all { background: #300; border: 1px solid #600; color: #c88; font: 9px monospace; padding: 2px 6px; cursor: pointer; border-radius: 2px; }
     .reset-all:hover { background: #600; color: #fff; }
     .top-btns { display: flex; gap: 3px; margin-bottom: 6px; }
-    #recBtn { background: none; border: 1px solid #600; color: #c00; font: 12px monospace; padding: 4px 12px; cursor: pointer; border-radius: 3px; width: 100%; margin-bottom: 6px; }
+    #recBtn { background: none; border: 1px solid #600; color: #c00; font: 12px monospace; padding: 4px 12px; cursor: pointer; border-radius: 3px; }
     #recBtn:hover { opacity: 1; }
     #recBtn.recording { background: #600; color: #fff; animation: pulse 1s infinite; }
     @keyframes pulse { 0%,100%{opacity:0.8;}50%{opacity:0.4;} }
@@ -125,7 +125,24 @@
 
   <!-- ═══ LEFT PANEL — Camera & FX ═══ -->
   <div id="camPanel" class="panel">
-    <button id="recBtn">● REC</button>
+    <div style="display:flex;gap:4px;margin-bottom:4px;">
+      <button id="recBtn" style="flex:1;">● REC</button>
+      <button class="panel-btn" id="videoFileBtn" style="flex:1;">📁 Video</button>
+      <button class="panel-btn" id="webcamBtn" style="flex:1;display:none;">📷 Webcam</button>
+      <input type="file" id="videoFileInput" accept="video/*" style="display:none">
+    </div>
+    <div id="vidControls" style="display:none;margin-bottom:6px;">
+      <div style="display:flex;gap:3px;margin-bottom:3px;">
+        <button class="panel-btn" id="vidPlayBtn" style="flex:1;" onclick="window.vidPlay()">▶ Play</button>
+        <button class="panel-btn" id="vidPauseBtn" style="flex:1;" onclick="window.vidPause()">⏸ Pause</button>
+        <button class="panel-btn" id="vidStopBtn" style="flex:1;" onclick="window.vidStop()">⏹ Stop</button>
+      </div>
+      <div style="display:flex;align-items:center;gap:4px;">
+        <input type="range" id="vidSeek" min="0" max="1000" value="0" style="flex:1;width:100%;">
+        <span id="vidTime" style="font-size:9px;color:#666;min-width:42px;">0:00</span>
+      </div>
+      <div id="vidName" style="font-size:8px;color:#555;margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></div>
+    </div>
 
     <div class="section"><span>Webcam feed</span><div class="sec-btns"><button class="sec-btn" onclick="toggleLock('cam',this)">🔓</button><button class="sec-btn" onclick="homeSection('cam')" title="Gentle return to centre">🏠</button><button class="sec-btn" onclick="resetSection('cam')">⟲</button><button class="sec-btn" onclick="randomSection('cam')">🎲</button></div></div>
     <label><span class="rlabel" data-for="camMixSlider">Feed:</span> <input type="range" id="camMixSlider" min="0" max="100" value="0" data-default="0"> <span id="camMixVal">off</span></label>
