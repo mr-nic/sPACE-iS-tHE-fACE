@@ -64,6 +64,7 @@
     .toggle-row input[type=checkbox] { accent-color: #c00; }
     .tb-pair { display: flex; gap: 12px; align-items: flex-start; margin-top: 2px; }
     .tb-pair .tb-sep { color: #333; font-size: 16px; align-self: center; margin: 0 -4px; }
+    #formatDims { color: #c00; font-size: 8px; margin: 2px 0 4px; letter-spacing: 0.5px; }
   </style>
 </head>
 <body>
@@ -88,6 +89,9 @@
     <b>Click a label name</b> — instant snap that single slider to its default.<br>
     <b>Tip:</b> Lock any sections you don't want affected before hitting Random All or Gentle Reset.
 
+    <h2>Format Guide</h2>
+    Select a format in the Global section to show a red dashed crop guide on the canvas. The panel shows the crop dimensions at your current window size. Format name is saved into the recording CSV/SRT metadata on export.
+
     <h2>Chaos</h2>
     The Chaos slider progressively destroys your carefully designed look. At low values it adds subtle jitter. At high values it fires random pulses, strobes, and explodes. Chaos is <b>locked by default</b> — Random All won't touch it unless you unlock it. When you drop chaos back to zero, all parameters restore to where they were before.
 
@@ -108,7 +112,7 @@
     <b>Tap</b> to set tempo manually. <b>Auto-detect</b> picks up beats from mic or audio track. Enable <b>Auto-pulse</b> or <b>Auto-strobe</b> to fire effects on each beat. Use the <b>Division</b> selector for double/half time.
 
     <h2>Recording</h2>
-    Hit <b>● REC</b> to capture the canvas at 60fps. When you stop, it downloads the video plus an SRT timecode file logging every cue change, FX trigger, and chaos level — drag the SRT into your video editor to see markers on the timeline.
+    Hit <b>● REC</b> to capture the canvas at 60fps. When you stop, it downloads the video plus an SRT timecode file logging every cue change, FX trigger, and chaos level — drag the SRT into your video editor to see markers on the timeline. Format metadata is included in the CSV export.
 
     <h2>Keyboard Shortcuts</h2>
     <span class="hk">Space</span> = pulse &nbsp; <span class="hk">I</span> = invert &nbsp; <span class="hk">F</span> = strobe &nbsp; <span class="hk">E</span> = explode &nbsp; <span class="hk">R</span> = implode<br>
@@ -191,6 +195,20 @@
     <div class="toggle-row">
       <input type="checkbox" id="zoomAllCheck"> <label for="zoomAllCheck" style="display:inline;margin:0;cursor:pointer;">Post-everything zoom</label>
     </div>
+
+    <!-- ═══ FORMAT PRESET ═══ -->
+    <label>Format: <select id="formatPreset" onchange="window.applyFormatPreset()">
+      <option value="free">Free</option>
+      <option value="9:16">9:16 — Spotify / Story</option>
+      <option value="4:5">4:5 — IG Portrait</option>
+      <option value="1:1">1:1 — Square</option>
+      <option value="16:9">16:9 — Landscape</option>
+      <option value="4:3">4:3 — Classic</option>
+      <option value="3:2">3:2 — Photo</option>
+      <option value="2.35:1">2.35:1 — Cinemascope</option>
+    </select></label>
+    <div id="formatDims"></div>
+
     <label><span class="rlabel" data-for="safeAreaSlider">Safe area:</span> <input type="range" id="safeAreaSlider" min="0" max="40" value="0" data-default="0"> <span id="safeAreaVal">off</span></label>
     <div class="toggle-row">
       <input type="checkbox" id="safeFlipCheck"> <label for="safeFlipCheck" style="display:inline;margin:0;cursor:pointer;">Flip lines at boundary</label>
